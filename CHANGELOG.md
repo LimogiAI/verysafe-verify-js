@@ -24,6 +24,10 @@ Semantic Versioning on this package's own line.
   storage of its own. Found in a round trip with the EU reference wallet on
   Android on 2026-10-12. The element finishes a return after the page's own
   scripts have run, so they see the result.
+- The README says what Private Browsing does to a same-device return, and
+  that a link opens only a wallet that registers its scheme, with the EU
+  reference wallet's iOS build from Trinsic as the example; the example page
+  prints storage diagnostics on load. From the iPhone round trip of 2026-10-12.
 - The element starts the prompt's or the link's verification ahead of the tap,
   on page load, and refreshes it every four minutes; `verify` takes such a
   start as `prepared`. Chrome opens a prompt only within seconds of the tap
