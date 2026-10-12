@@ -139,7 +139,16 @@ self-hosted installation they are its `RETURN_URL_ORIGINS` and
   the wallet by link. Chrome on an iPhone runs on Safari's engine.
 - **Everything else**: a link on a phone, a QR code on a computer. Chrome on
   Android asks the person whether they trust the site before it opens the
-  wallet from a link, and the wallet brings them back in a new tab.
+  wallet from a link, and the wallet brings them back in a new tab; Safari on
+  an iPhone asks "Open in …?" and the wallet does the same.
+- **Private Browsing** cannot finish a same-device return: the tab the wallet
+  opens has storage of its own, finds no id, and the page shows nothing, which
+  is the right refusal. Say so to the person where it matters.
+- **A link opens only a wallet that registers its scheme**, and when two apps
+  register the same custom scheme the phone picks one. Choose `linkScheme` for
+  the wallets your users have: the EU reference wallet's iOS build from
+  Trinsic opens `eudi-openid4vp://` only; the verifier's interop record says
+  which build opens what.
 
 ## Versions
 
