@@ -22,9 +22,17 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck && npm run lint && npm test && npm run build
-      - name: The tag must be the package's version
+      - name: The tag must be the package's version, and that version not yet on npm
+        id: check
         run: |
           set -euo pipefail
           v="$(node -p "require('./package.json').version")"
           [ "${GITHUB_REF_NAME}" = "v${v}" ] || { echo "::error::Tag ${GITHUB_REF_NAME} is not v${v}"; exit 1; }
-      - run: npm publish --provenance --access public
+          if npm view "@verysafe/verify@${v}" version >/dev/null 2>&1; then
+            echo "::notice::@verysafe/verify@${v} is on npm already (the first version is published by hand); nothing to do."
+            echo "publish=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=yes" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.check.outputs.publish == 'yes'
+        run: npm publish --provenance --access public

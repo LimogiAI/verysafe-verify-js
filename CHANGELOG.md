@@ -6,6 +6,14 @@ Semantic Versioning on this package's own line.
 
 ## Unreleased
 
+Nothing yet.
+
+## [0.1.0] - 2026-10-12
+
+The first release: proven with the EU reference wallet on Android (Chrome)
+and iOS (Safari) against VerySafe's sandbox and production services on
+2026-10-12; the record is in the verifier's interop document.
+
 ### Added
 
 - The browser half (`@verysafe/verify/browser`): `detect`, `verify`,
@@ -48,3 +56,5 @@ Semantic Versioning on this package's own line.
 - `verify` falls back from the prompt when the customer's server refuses the
   prompt's start (a page origin not registered, say), and tells the page why
   through `onFallback`; the element dispatches `verysafe-verify:fallback`.
+
+[0.1.0]: https://github.com/LimogiAI/verysafe-verify-js/releases/tag/v0.1.0
