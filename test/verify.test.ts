@@ -45,6 +45,7 @@ function fakeTransport(statuses: string[] = ["verified"]): Transport & { starts:
 
 afterEach(() => {
   sessionStorage.clear();
+  localStorage.clear();
   vi.restoreAllMocks();
 });
 
@@ -143,14 +144,15 @@ describe("verify, the browser prompt", () => {
 });
 
 describe("verify, a link on a phone", () => {
-  it("keeps the id in this browser's session and opens the link", async () => {
+  it("keeps the id in this browser's storage for the origin, where a return in a new tab still finds it, and opens the link", async () => {
     setBrowser({ userAgent: PHONE });
     const t = fakeTransport();
     const opened: string[] = [];
     const result = await verify({ transport: t, navigate: (url) => opened.push(url) });
     expect(result).toEqual({ outcome: "redirected", id: "v-same_device", flow: "same_device" });
     expect(opened).toEqual(["openid4vp://?request_uri=https://verifier.example/same_device"]);
-    expect(JSON.parse(sessionStorage.getItem(DEFAULT_STORAGE_KEY) ?? "{}").id).toBe("v-same_device");
+    expect(JSON.parse(localStorage.getItem(DEFAULT_STORAGE_KEY) ?? "{}").id).toBe("v-same_device");
+    expect(sessionStorage.getItem(DEFAULT_STORAGE_KEY)).toBeNull();
   });
 });
 
@@ -184,13 +186,22 @@ describe("verify, a QR code on a computer", () => {
 describe("complete, on the return page", () => {
   it("exchanges the code with the id from the session, never from the URL, and removes the code from the address", async () => {
     const t = fakeTransport();
-    sessionStorage.setItem(DEFAULT_STORAGE_KEY, JSON.stringify({ id: "v-mine", at: 1 }));
+    localStorage.setItem(DEFAULT_STORAGE_KEY, JSON.stringify({ id: "v-mine", at: Date.now() }));
     const replaced: string[] = [];
     const result = await complete({ transport: t, url: "https://shop.example/return?id=v-from-url&response_code=c0de", replaceUrl: (u) => replaced.push(u) });
     expect(result).toEqual({ outcome: "verified", id: "v-mine" });
     expect(t.exchanges).toEqual([["v-mine", "c0de"]]);
     expect(replaced).toEqual(["https://shop.example/return?id=v-from-url"]);
-    expect(sessionStorage.getItem(DEFAULT_STORAGE_KEY)).toBeNull();
+    expect(localStorage.getItem(DEFAULT_STORAGE_KEY)).toBeNull();
+  });
+
+  it("ignores an id kept longer ago than the verifier keeps a verification", async () => {
+    const t = fakeTransport();
+    localStorage.setItem(DEFAULT_STORAGE_KEY, JSON.stringify({ id: "v-old", at: Date.now() - 16 * 60 * 1000 }));
+    const result = await complete({ transport: t, url: "https://shop.example/return?response_code=c0de", replaceUrl: () => {} });
+    expect(result).toEqual({ outcome: "no_session" });
+    expect(t.exchanges).toEqual([]);
+    expect(localStorage.getItem(DEFAULT_STORAGE_KEY)).toBeNull();
   });
 
   it("does nothing for a browser that arrives with a code but started nothing", async () => {

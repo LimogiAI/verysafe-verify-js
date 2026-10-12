@@ -63,7 +63,12 @@ export class VerySafeVerifyElement extends HTMLElement {
 
   connectedCallback(): void {
     this.#label();
-    if (new URL(location.href).searchParams.has("response_code")) void this.finish();
+    if (new URL(location.href).searchParams.has("response_code")) {
+      // After the page's own scripts have run, so that they see the result.
+      const finish = () => void this.finish();
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", finish, { once: true });
+      else setTimeout(finish, 0);
+    }
   }
 
   disconnectedCallback(): void {

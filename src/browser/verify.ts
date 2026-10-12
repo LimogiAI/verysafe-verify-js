@@ -23,7 +23,12 @@ export interface VerifyOptions {
   onFallback?: (reason: string) => void;
   /** Called with each status a poll returns. */
   onStatus?: (status: VerificationStatus) => void;
-  /** Where the id of a same-device verification is kept until the person returns; `sessionStorage` by default. */
+  /**
+   * Where the id of a same-device verification is kept until the person
+   * returns; `localStorage` by default. A wallet on Android brings the person
+   * back in a new tab, which has no `sessionStorage` of its own, so the id is
+   * kept for the page's origin, for `returnTtlMs`, and never in the URL.
+   */
   storage?: Storage;
   /** The key in that storage. */
   storageKey?: string;
@@ -44,6 +49,17 @@ export type VerifyResult =
   | { outcome: "cancelled"; id?: string; flow: Flow; fallback?: Flow };
 
 export const DEFAULT_STORAGE_KEY = "verysafe-verify";
+
+/** How long a same-device verification's id waits for the return: the verifier's own 15 minutes. */
+export const DEFAULT_RETURN_TTL_MS = 15 * 60 * 1000;
+
+function defaultStorage(): Storage {
+  try {
+    return localStorage;
+  } catch {
+    return sessionStorage;
+  }
+}
 
 interface DigitalCredentialLike {
   protocol?: unknown;
@@ -176,7 +192,7 @@ async function sameDevice(options: VerifyOptions): Promise<VerifyResult> {
   if (typeof start.authorizationRequestUri !== "string") {
     return { outcome: "failed", id: start.id, flow: "same_device", reason: "The start carried no link." };
   }
-  const storage = options.storage ?? sessionStorage;
+  const storage = options.storage ?? defaultStorage();
   storage.setItem(options.storageKey ?? DEFAULT_STORAGE_KEY, JSON.stringify({ id: start.id, at: Date.now() }));
   const navigate = options.navigate ?? ((url: string) => location.assign(url));
   navigate(start.authorizationRequestUri);
@@ -211,8 +227,11 @@ export interface CompleteOptions {
   transport: Transport;
   /** The page's URL; `location.href` by default. */
   url?: string;
+  /** Where `verify` kept the id; `localStorage` by default. */
   storage?: Storage;
   storageKey?: string;
+  /** An id kept longer ago than this is ignored, as the verifier has expired it anyway. */
+  returnTtlMs?: number;
   /** Removes the code from the address bar; `history.replaceState` by default. */
   replaceUrl?: (url: string) => void;
 }
@@ -221,31 +240,34 @@ export type CompleteResult =
   | { outcome: "verified" | "failed" | "expired" | "pending" | "awaiting_return"; id: string }
   /** The URL carries no `response_code`: this is not a return from the wallet. */
   | { outcome: "no_code" }
-  /** A code arrived, but this browser session started no verification: nothing is exchanged, nothing is shown (HAIP §5.1). */
+  /** A code arrived, but this browser started no verification lately: nothing is exchanged, nothing is shown (HAIP §5.1). */
   | { outcome: "no_session" };
 
 /**
  * On the return page: finishes a same-device verification. The id comes from
- * this browser's own session, never from the URL, and the customer's server
- * exchanges the code with it. A browser that arrives with a code but no
- * session gets nothing.
+ * this browser's own storage for the page's origin, never from the URL, and
+ * the customer's server exchanges the code with it. A browser that arrives
+ * with a code but started nothing gets nothing.
  */
 export async function complete(options: CompleteOptions): Promise<CompleteResult> {
   const href = options.url ?? location.href;
   const url = new URL(href);
   const code = url.searchParams.get("response_code");
   if (code === null || code.length === 0) return { outcome: "no_code" };
-  const storage = options.storage ?? sessionStorage;
+  const storage = options.storage ?? defaultStorage();
   const key = options.storageKey ?? DEFAULT_STORAGE_KEY;
   const kept = storage.getItem(key);
+  const ttl = options.returnTtlMs ?? DEFAULT_RETURN_TTL_MS;
   let id: string | undefined;
   if (kept !== null) {
     try {
-      const parsed = JSON.parse(kept) as { id?: unknown };
-      if (typeof parsed.id === "string") id = parsed.id;
+      const parsed = JSON.parse(kept) as { id?: unknown; at?: unknown };
+      const fresh = typeof parsed.at === "number" && Date.now() - parsed.at <= ttl;
+      if (typeof parsed.id === "string" && fresh) id = parsed.id;
     } catch {
       id = undefined;
     }
+    if (id === undefined) storage.removeItem(key);
   }
   url.searchParams.delete("response_code");
   const replace = options.replaceUrl ?? ((next: string) => history.replaceState(history.state, "", next));

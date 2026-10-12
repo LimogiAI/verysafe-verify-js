@@ -5,6 +5,9 @@ const line = (text) => {
   log.textContent += `${new Date().toISOString().slice(11, 19)} ${text}\n`;
 };
 line(`detected: ${JSON.stringify(VerySafeVerify.detect())}`);
+// For testing: ?flow=same_device|cross_device|dc_api skips detection.
+const preferred = new URLSearchParams(location.search).get("flow");
+if (preferred) document.querySelector("verysafe-verify").setAttribute("prefer-flow", preferred);
 document.addEventListener("verysafe-verify:flow", (e) => line(`flow: ${e.detail.flow}`));
 document.addEventListener("verysafe-verify:status", (e) => line(`status: ${e.detail.status}`));
 document.addEventListener("verysafe-verify:result", (e) => line(`result: ${JSON.stringify(e.detail)}`));

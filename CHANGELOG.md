@@ -18,6 +18,12 @@ Semantic Versioning on this package's own line.
   calls with the key and gives the page a status, never a claim.
 - A `<script>` bundle, `@verysafe/verify/iife`, that registers the element
   on load.
+- A same-device verification's id is kept in the browser's storage for the
+  page's origin (`localStorage`, for 15 minutes), not in `sessionStorage`: a
+  wallet on Android brings the person back in a new tab, which has no session
+  storage of its own. Found in a round trip with the EU reference wallet on
+  Android on 2026-10-12. The element finishes a return after the page's own
+  scripts have run, so they see the result.
 - `verify` falls back from the prompt when the customer's server refuses the
   prompt's start (a page origin not registered, say), and tells the page why
   through `onFallback`; the element dispatches `verysafe-verify:fallback`.
