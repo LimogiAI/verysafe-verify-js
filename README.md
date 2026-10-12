@@ -106,8 +106,9 @@ platform implements them with the verifier's public API
 | `{"action": "exchange", "id", "responseCode"}` | `POST /v1/verifications/{id}/exchange` | `{id, status}` |
 
 The page never receives a claim, a reference or a key. On a same-device
-return, the page takes the `id` from its own browser session, never from
-the URL, and your server exchanges the code with it: that is the check HAIP
+return, the page takes the `id` from the browser's own storage for your
+origin, kept for 15 minutes and never read from the URL, and your server
+exchanges the code with it: that is the check HAIP
 1.0 §5.1 asks for, and a browser that arrives with a code but no session
 gets nothing.
 
@@ -129,7 +130,9 @@ self-hosted installation they are its `RETURN_URL_ORIGINS` and
 - **Safari, and every browser on an iPhone**: the prompt offers only
   `org-iso-mdoc`, which the verifier does not speak yet, so the library opens
   the wallet by link. Chrome on an iPhone runs on Safari's engine.
-- **Everything else**: a link on a phone, a QR code on a computer.
+- **Everything else**: a link on a phone, a QR code on a computer. Chrome on
+  Android asks the person whether they trust the site before it opens the
+  wallet from a link, and the wallet brings them back in a new tab.
 
 ## Versions
 

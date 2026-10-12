@@ -7,6 +7,7 @@ export {
   complete,
   type CompleteOptions,
   type CompleteResult,
+  DEFAULT_RETURN_TTL_MS,
   DEFAULT_STORAGE_KEY,
   verify,
   type VerifyOptions,

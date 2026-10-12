@@ -4,7 +4,10 @@ import { defineElement, VerySafeVerifyElement } from "../src/browser/element.js"
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   document.body.replaceChildren();
+  localStorage.clear();
+  history.replaceState(null, "", "/");
 });
 
 describe("<verysafe-verify>", () => {
@@ -40,6 +43,26 @@ describe("<verysafe-verify>", () => {
     expect(results).toEqual([result]);
     expect(el.shadowRoot?.querySelector("p")?.textContent).toBe("verified");
   }, 10_000);
+
+  it("finishes a same-device return after the page's own scripts have had their turn", async () => {
+    defineElement();
+    localStorage.setItem("verysafe-verify", JSON.stringify({ id: "v9", at: Date.now() }));
+    history.replaceState(null, "", "/?response_code=c0de");
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as { action: string; id: string; responseCode: string };
+      expect(body).toEqual({ action: "exchange", id: "v9", responseCode: "c0de" });
+      return new Response(JSON.stringify({ id: "v9", status: "verified" }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const el = document.createElement("verysafe-verify") as VerySafeVerifyElement;
+    el.setAttribute("endpoint", "/api/verify");
+    document.body.appendChild(el);
+    const results: unknown[] = [];
+    el.addEventListener("verysafe-verify:result", (e) => results.push((e as CustomEvent).detail));
+    await vi.waitFor(() => expect(results).toEqual([{ outcome: "verified", id: "v9" }]));
+    expect(location.search).toBe("");
+    expect(localStorage.getItem("verysafe-verify")).toBeNull();
+  });
 
   it("refuses to run without an endpoint", async () => {
     defineElement();
