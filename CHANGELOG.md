@@ -24,6 +24,11 @@ Semantic Versioning on this package's own line.
   storage of its own. Found in a round trip with the EU reference wallet on
   Android on 2026-10-12. The element finishes a return after the page's own
   scripts have run, so they see the result.
+- After the browser prompt's answer is relayed, the page asks the customer's
+  server for the status once, so the server reads the result with its key at
+  once, within the verifier's 15 minutes, and the server's word is the page's
+  outcome. Found in the production round trip of 2026-10-12, where the
+  example server never read a result the relay had verified.
 - A cancelled prompt carries the browser's own error as `reason`, and a
   fallback's reason names it too, so a page can tell a dismissal from a
   browser that found no wallet.

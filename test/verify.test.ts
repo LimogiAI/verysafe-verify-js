@@ -19,13 +19,15 @@ function setBrowser(options: { userAgent: string; api?: { allows?: (p: string) =
   }
 }
 
-function fakeTransport(statuses: string[] = ["verified"]): Transport & { starts: Flow[]; exchanges: [string, string][] } {
+function fakeTransport(statuses: string[] = ["verified"]): Transport & { starts: Flow[]; exchanges: [string, string][]; statusReads: string[] } {
   const starts: Flow[] = [];
   const exchanges: [string, string][] = [];
+  const statusReads: string[] = [];
   let n = 0;
   return {
     starts,
     exchanges,
+    statusReads,
     async start(flow) {
       starts.push(flow);
       const base: PageStart = { id: `v-${flow}`, flow, status: "pending" };
@@ -33,6 +35,7 @@ function fakeTransport(statuses: string[] = ["verified"]): Transport & { starts:
       return { ...base, authorizationRequestUri: `openid4vp://?request_uri=https://verifier.example/${flow}` };
     },
     async status(id) {
+      statusReads.push(id);
       const status = statuses[Math.min(n++, statuses.length - 1)] ?? "verified";
       return { id, status: status as PageStart["status"] };
     },
@@ -59,6 +62,7 @@ describe("verify, the browser prompt", () => {
     const result = await verify({ transport: t, credentials: { get }, fetch: relay as unknown as typeof fetch, onFlow: (f) => flows.push(f) });
     expect(result).toEqual({ outcome: "verified", id: "v-dc_api", flow: "dc_api" });
     expect(t.starts).toEqual(["dc_api"]);
+    expect(t.statusReads).toEqual(["v-dc_api"]);
     expect(flows).toEqual(["dc_api"]);
     const asked = (get.mock.calls[0] as unknown as [{ digital: { requests: unknown[] } }])[0];
     expect(asked.digital.requests).toEqual([{ protocol: "openid4vp-v1-signed", data: { request: "jwt" } }]);
@@ -68,6 +72,24 @@ describe("verify, the browser prompt", () => {
     expect(init.mode).toBe("cors");
     expect(JSON.parse(String(init.body))).toEqual({ protocol: "openid4vp-v1-signed", data: { response: "jwe" } });
     expect(JSON.stringify(init.headers)).not.toMatch(/api-key|authorization/i);
+  });
+
+  it("after the relay, the customer's server reads the result itself, and its word is the page's outcome", async () => {
+    setBrowser({ userAgent: PHONE, api: { allows: () => true } });
+    const t = fakeTransport(["failed"]);
+    const relay = vi.fn(async () => new Response("{}", { status: 200 }));
+    const result = await verify({ transport: t, credentials: { get: async () => ({ protocol: "openid4vp-v1-signed", data: {} }) }, fetch: relay as unknown as typeof fetch });
+    expect(result).toEqual({ outcome: "failed", id: "v-dc_api", flow: "dc_api" });
+    expect(t.statusReads).toEqual(["v-dc_api"]);
+  });
+
+  it("keeps the relay's verdict when the server's read fails", async () => {
+    setBrowser({ userAgent: PHONE, api: { allows: () => true } });
+    const t = fakeTransport();
+    const down: Transport = { ...t, status: async () => { throw new TransportError("down", 502); } };
+    const relay = vi.fn(async () => new Response("{}", { status: 200 }));
+    const result = await verify({ transport: down, credentials: { get: async () => ({ protocol: "openid4vp-v1-signed", data: {} }) }, fetch: relay as unknown as typeof fetch });
+    expect(result).toEqual({ outcome: "verified", id: "v-dc_api", flow: "dc_api" });
   });
 
   it("parses an answer whose data is a string", async () => {

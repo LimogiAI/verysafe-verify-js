@@ -188,7 +188,18 @@ async function browserPrompt(options: VerifyOptions): Promise<PromptOutcome> {
   };
   if (options.signal !== undefined) relayInit.signal = options.signal;
   const response = await doFetch(start.dcApiResponseUrl, relayInit);
-  if (response.ok) return { outcome: "verified", id: start.id, flow: "dc_api" };
+  if (response.ok) {
+    // The relay told the page; now the customer's server reads the result
+    // itself, with its key, which is what it must act on. Its answer is the
+    // page's outcome; the relay's word stands if that read fails.
+    try {
+      const { status } = await options.transport.status(start.id);
+      if (isFinal(status)) return { outcome: status, id: start.id, flow: "dc_api" };
+    } catch {
+      // The relay's verdict stands.
+    }
+    return { outcome: "verified", id: start.id, flow: "dc_api" };
+  }
   let reason = `The verifier answered ${response.status}.`;
   try {
     const body = (await response.json()) as { error?: unknown };
