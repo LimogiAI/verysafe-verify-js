@@ -89,9 +89,11 @@ Style it from your page with `::part(button)`, `::part(qr)` and
 Security Policy is no obstacle; allow the verifier's origin in
 `connect-src`, since the page relays the browser prompt's answer there.
 
-**What the page learns is for the screen only.** A `verified` on the page
-means the verifier said so to the page; your server reads the verification
-with its key before it acts, as `handleNodeRequest` gives it.
+**What the page learns is for the screen only.** After the prompt's answer is
+relayed, the page asks your server for the status once, so your server reads
+the verification with its key at once; a `verified` on the page is your
+server's own word. Act on `verification`, as `handleNodeRequest` gives it,
+never on what a page tells you.
 
 ## The three calls
 
