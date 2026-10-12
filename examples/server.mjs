@@ -5,7 +5,9 @@
 //
 // RETURN_BASE_URL (default http://127.0.0.1:8790) is where the wallet sends
 // the person back; an https tunnel to this port, registered as a return
-// origin and a browser origin for the key, lets a phone reach it.
+// origin and a browser origin for the key, lets a phone reach it. CLAIMS
+// names the claims to ask for, LINK_SCHEME what a link starts with
+// (openid4vp:// by default; haip-vp://, eu-eaap://, or a wallet's app link).
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createClient, handleNodeRequest } from "../dist/server/index.js";
@@ -26,7 +28,7 @@ const server = createServer(async (request, response) => {
   if (url.pathname === "/api/verify") {
     const { verification } = await handleNodeRequest(client, request, response, {
       returnUrl: `${returnBase}/`,
-      start: { claims: process.env.CLAIMS?.split(",") },
+      start: { claims: process.env.CLAIMS?.split(","), linkScheme: process.env.LINK_SCHEME },
       onError: (error) => console.error("verifier:", error instanceof Error ? error.message : error),
     });
     if (verification?.status === "verified") {
