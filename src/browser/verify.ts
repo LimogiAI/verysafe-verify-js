@@ -1,6 +1,6 @@
 import { type Flow, isFinal, type PageStart, type VerificationStatus } from "../shared/types.js";
 import { DEFAULT_PROTOCOLS, detect } from "./detect.js";
-import type { Transport } from "./transport.js";
+import { type Transport, TransportError } from "./transport.js";
 
 export interface VerifyOptions {
   /** The three calls to the customer's server. `httpTransport(endpoint)` for most pages. */
@@ -19,6 +19,8 @@ export interface VerifyOptions {
   signal?: AbortSignal;
   /** Called when the way is chosen, and again when the library falls back. */
   onFlow?: (flow: Flow) => void;
+  /** Called when the library falls back from the prompt, with why. */
+  onFallback?: (reason: string) => void;
   /** Called with each status a poll returns. */
   onStatus?: (status: VerificationStatus) => void;
   /** Where the id of a same-device verification is kept until the person returns; `sessionStorage` by default. */
@@ -104,8 +106,20 @@ export async function verify(options: VerifyOptions): Promise<VerifyResult> {
 type PromptOutcome = VerifyResult | { outcome: "fallback" };
 
 async function browserPrompt(options: VerifyOptions): Promise<PromptOutcome> {
-  const start = await options.transport.start("dc_api");
+  let start: PageStart;
+  try {
+    start = await options.transport.start("dc_api");
+  } catch (error) {
+    // The customer's server, or the verifier behind it, refused a prompt start:
+    // the page's origin is not registered, say. The next way may still work.
+    if (error instanceof TransportError && error.status >= 400 && error.status < 500) {
+      options.onFallback?.(`The server refused a browser-prompt start: ${error.message}`);
+      return { outcome: "fallback" };
+    }
+    throw error;
+  }
   if (!Array.isArray(start.dcApiRequests) || typeof start.dcApiResponseUrl !== "string") {
+    options.onFallback?.("The start carried no browser-prompt request.");
     return { outcome: "fallback" };
   }
   const credentials = options.credentials ?? navigator.credentials;
@@ -121,9 +135,11 @@ async function browserPrompt(options: VerifyOptions): Promise<PromptOutcome> {
       return { outcome: "cancelled", id: start.id, flow: "dc_api", fallback: detect().phone ? "same_device" : "cross_device" };
     }
     // The browser cannot do it after all (no protocol, no support): try the next way.
+    options.onFallback?.(`The browser could not run the prompt: ${name || "unknown error"}.`);
     return { outcome: "fallback" };
   }
   if (credential === null || typeof credential !== "object" || typeof credential.protocol !== "string") {
+    options.onFallback?.("The browser answered with no credential.");
     return { outcome: "fallback" };
   }
   let data: unknown = credential.data;
