@@ -64,6 +64,34 @@ describe("<verysafe-verify>", () => {
     expect(localStorage.getItem("verysafe-verify")).toBeNull();
   });
 
+  it("starts the prompt's verification ahead of the tap, and the tap only opens the prompt", async () => {
+    defineElement();
+    Object.defineProperty(navigator, "userAgent", { value: "Mozilla/5.0 (Linux; Android 16) Chrome/154 Mobile", configurable: true });
+    (globalThis as Record<string, unknown>).DigitalCredential = { userAgentAllowsProtocol: () => true };
+    const get = vi.fn(async () => ({ protocol: "openid4vp-v1-signed", data: { response: "jwe" } }));
+    Object.defineProperty(navigator, "credentials", { value: { get }, configurable: true });
+    const actions: string[] = [];
+    const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
+      if (url.endsWith("/dc-api-response")) return new Response("{}", { status: 200 });
+      const body = JSON.parse(String(init.body)) as { action: string };
+      actions.push(body.action);
+      if (body.action === "start") return new Response(JSON.stringify({ id: "v7", flow: "dc_api", status: "pending", dcApiRequests: [{ protocol: "openid4vp-v1-signed", data: {} }], dcApiResponseUrl: "https://verifier.example/v1/verifications/v7/dc-api-response" }), { status: 201 });
+      return new Response(JSON.stringify({ id: "v7", status: "verified" }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const el = document.createElement("verysafe-verify") as VerySafeVerifyElement;
+    el.setAttribute("endpoint", "/api/verify");
+    document.body.appendChild(el);
+    await vi.waitFor(() => expect(actions).toEqual(["start"]));
+    expect(get).not.toHaveBeenCalled();
+    const result = await el.run();
+    expect(result).toEqual({ outcome: "verified", id: "v7", flow: "dc_api" });
+    expect(get).toHaveBeenCalledTimes(1);
+    expect(actions.filter((a) => a === "start")).toHaveLength(2); // the one used, and the next one made ready after the run
+    delete (globalThis as Record<string, unknown>).DigitalCredential;
+    Object.defineProperty(navigator, "credentials", { value: undefined, configurable: true });
+  });
+
   it("refuses to run without an endpoint", async () => {
     defineElement();
     const el = document.createElement("verysafe-verify") as VerySafeVerifyElement;

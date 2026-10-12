@@ -92,6 +92,29 @@ describe("verify, the browser prompt", () => {
     expect(result).toEqual({ outcome: "verified", id: "v-dc_api", flow: "dc_api" });
   });
 
+  it("uses a start made before the tap, so the prompt opens within the browser's activation window", async () => {
+    setBrowser({ userAgent: PHONE, api: { allows: () => true } });
+    const t = fakeTransport();
+    const prepared = await t.start("dc_api");
+    t.starts.length = 0;
+    const get = vi.fn(async () => ({ protocol: "openid4vp-v1-signed", data: {} }));
+    const relay = vi.fn(async () => new Response("{}", { status: 200 }));
+    const result = await verify({ transport: t, prepared: Promise.resolve(prepared), credentials: { get }, fetch: relay as unknown as typeof fetch });
+    expect(result).toEqual({ outcome: "verified", id: "v-dc_api", flow: "dc_api" });
+    expect(t.starts).toEqual([]);
+    expect(get).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores a prepared start for another way", async () => {
+    setBrowser({ userAgent: PHONE, api: { allows: () => true } });
+    const t = fakeTransport();
+    const prepared = await t.start("same_device");
+    t.starts.length = 0;
+    const relay = vi.fn(async () => new Response("{}", { status: 200 }));
+    await verify({ transport: t, prepared, credentials: { get: async () => ({ protocol: "openid4vp-v1-signed", data: {} }) }, fetch: relay as unknown as typeof fetch });
+    expect(t.starts).toEqual(["dc_api"]);
+  });
+
   it("parses an answer whose data is a string", async () => {
     setBrowser({ userAgent: PHONE, api: { allows: () => true } });
     const relay = vi.fn(async () => new Response("{}", { status: 200 }));
