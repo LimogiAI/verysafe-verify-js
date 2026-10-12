@@ -1,0 +1,30 @@
+# Publishes a tagged release to the public npm registry with provenance,
+# through npm's trusted publishing (OpenID Connect from this workflow): no
+# token is stored anywhere. The first version of the package is published by
+# hand by the maintainer, signed in; trusted publishing is then switched on in
+# the package's settings on npmjs.com for this repository and workflow.
+name: publish
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck && npm run lint && npm test && npm run build
+      - name: The tag must be the package's version
+        run: |
+          set -euo pipefail
+          v="$(node -p "require('./package.json').version")"
+          [ "${GITHUB_REF_NAME}" = "v${v}" ] || { echo "::error::Tag ${GITHUB_REF_NAME} is not v${v}"; exit 1; }
+      - run: npm publish --provenance --access public

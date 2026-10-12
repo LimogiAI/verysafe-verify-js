@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Example: verify with an EU wallet</title>
+  <link rel="stylesheet" href="/page.css">
+</head>
+<body>
+  <main>
+    <h1>Example page</h1>
+    <p>This page holds no key. It asks its own server to start, and the server talks to the verifier.</p>
+    <verysafe-verify endpoint="/api/verify"></verysafe-verify>
+    <h2>What happened</h2>
+    <pre id="log"></pre>
+  </main>
+  <script src="/verysafe-verify.iife.js"></script>
+  <script src="/page.js"></script>
+</body>
+</html>

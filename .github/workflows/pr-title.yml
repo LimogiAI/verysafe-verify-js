@@ -1,0 +1,25 @@
+# The title becomes the commit on main (squash merges), so it must read
+# `type(scope): summary`. The body must carry no AI attribution.
+name: pr-title
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+permissions:
+  pull-requests: read
+jobs:
+  pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the title and the body
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$TITLE" | grep -Eq '^(build|chore|ci|docs|feat|fix|perf|refactor|revert|test)(\([a-z0-9., -]+\))?!?: [^ ].*[^.]$'; then
+            echo "::error::The title must read 'type(scope): summary in the imperative, no trailing full stop'. Got: $TITLE"; exit 1
+          fi
+          if printf '%s' "$BODY" | grep -Eiq 'co-authored-by: *(claude|chatgpt|copilot)|generated with \[?claude|🤖 generated'; then
+            echo "::error::No AI attribution in pull request bodies."; exit 1
+          fi
+          echo "ok"
