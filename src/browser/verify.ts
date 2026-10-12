@@ -237,7 +237,7 @@ async function sameDevice(options: VerifyOptions): Promise<VerifyResult> {
 }
 
 async function crossDevice(options: VerifyOptions): Promise<VerifyResult> {
-  const start = await options.transport.start("cross_device");
+  const start = await startOf(options, "cross_device");
   if (typeof start.authorizationRequestUri !== "string") {
     return { outcome: "failed", id: start.id, flow: "cross_device", reason: "The start carried no link." };
   }

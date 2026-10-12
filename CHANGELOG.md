@@ -24,6 +24,9 @@ Semantic Versioning on this package's own line.
   storage of its own. Found in a round trip with the EU reference wallet on
   Android on 2026-10-12. The element finishes a return after the page's own
   scripts have run, so they see the result.
+- No wasted starts: a start made ahead is used for the QR code too; a return
+  page finishes before it makes a start ready; a tab that handed off to the
+  wallet makes none until it is shown again.
 - The README says what Private Browsing does to a same-device return, and
   that a link opens only a wallet that registers its scheme, with the EU
   reference wallet's iOS build from Trinsic as the example; the example page

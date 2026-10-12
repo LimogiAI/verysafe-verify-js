@@ -48,10 +48,15 @@ describe("<verysafe-verify>", () => {
     defineElement();
     localStorage.setItem("verysafe-verify", JSON.stringify({ id: "v9", at: Date.now() }));
     history.replaceState(null, "", "/?response_code=c0de");
+    const actions: string[] = [];
     const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
-      const body = JSON.parse(String(init.body)) as { action: string; id: string; responseCode: string };
-      expect(body).toEqual({ action: "exchange", id: "v9", responseCode: "c0de" });
-      return new Response(JSON.stringify({ id: "v9", status: "verified" }), { status: 200 });
+      const body = JSON.parse(String(init.body)) as { action: string; id?: string; responseCode?: string };
+      actions.push(body.action);
+      if (body.action === "exchange") {
+        expect(body).toEqual({ action: "exchange", id: "v9", responseCode: "c0de" });
+        return new Response(JSON.stringify({ id: "v9", status: "verified" }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ id: "v10", flow: "cross_device", status: "pending", authorizationRequestUri: "openid4vp://x" }), { status: 201 });
     });
     vi.stubGlobal("fetch", fetchMock);
     const el = document.createElement("verysafe-verify") as VerySafeVerifyElement;
@@ -62,6 +67,30 @@ describe("<verysafe-verify>", () => {
     await vi.waitFor(() => expect(results).toEqual([{ outcome: "verified", id: "v9" }]));
     expect(location.search).toBe("");
     expect(localStorage.getItem("verysafe-verify")).toBeNull();
+    // The return finished before any start was made ready, not after a wasted one.
+    expect(actions[0]).toBe("exchange");
+  });
+
+  it("makes no start for a tab on its way to the wallet, and one again when the tab is shown", async () => {
+    defineElement();
+    Object.defineProperty(navigator, "userAgent", { value: "Mozilla/5.0 (Linux; Android 16) Chrome/154 Mobile", configurable: true });
+    const starts: string[] = [];
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body)) as { action: string; flow?: string };
+      if (body.action === "start") starts.push(body.flow ?? "");
+      return new Response(JSON.stringify({ id: `v${starts.length}`, flow: "same_device", status: "pending", authorizationRequestUri: "openid4vp://x" }), { status: 201 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const el = document.createElement("verysafe-verify") as VerySafeVerifyElement;
+    el.setAttribute("endpoint", "/api/verify");
+    document.body.appendChild(el);
+    await vi.waitFor(() => expect(starts).toEqual(["same_device"]));
+    const result = await el.run();
+    expect(result.outcome).toBe("redirected");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(starts).toEqual(["same_device"]);
+    window.dispatchEvent(new Event("pageshow"));
+    await vi.waitFor(() => expect(starts).toEqual(["same_device", "same_device"]));
   });
 
   it("starts the prompt's verification ahead of the tap, and the tap only opens the prompt", async () => {
