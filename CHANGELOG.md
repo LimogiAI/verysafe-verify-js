@@ -18,3 +18,6 @@ Semantic Versioning on this package's own line.
   calls with the key and gives the page a status, never a claim.
 - A `<script>` bundle, `@verysafe/verify/iife`, that registers the element
   on load.
+- `verify` falls back from the prompt when the customer's server refuses the
+  prompt's start (a page origin not registered, say), and tells the page why
+  through `onFallback`; the element dispatches `verysafe-verify:fallback`.

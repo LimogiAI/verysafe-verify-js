@@ -77,7 +77,8 @@ const result = await verify({ transport, qrElement: document.querySelector("#qr"
 ```
 
 Or the element, which does both and dispatches `verysafe-verify:flow`,
-`verysafe-verify:status` and `verysafe-verify:result` events:
+`verysafe-verify:fallback`, `verysafe-verify:status` and
+`verysafe-verify:result` events:
 
 ```html
 <verysafe-verify endpoint="/api/verify" label="Verify with your EU wallet"></verysafe-verify>

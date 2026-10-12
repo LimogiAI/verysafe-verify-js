@@ -15,7 +15,7 @@ button { font: inherit; cursor: pointer; }
  * `<verysafe-verify endpoint="/api/verify">`: a button that runs `verify` in
  * the order the library tries, a QR code when one is needed, and a status
  * line. On a return page it runs `complete` on its own. It dispatches
- * `verysafe-verify:flow`, `verysafe-verify:status` and `verysafe-verify:result`
+ * `verysafe-verify:flow`, `verysafe-verify:fallback`, `verysafe-verify:status` and `verysafe-verify:result`
  * events, with the library's values in `detail`. Styles come through a
  * constructed stylesheet, so a strict Content Security Policy is no obstacle;
  * override them from the page with `::part(button)`, `::part(qr)` and
@@ -103,6 +103,9 @@ export class VerySafeVerifyElement extends HTMLElement {
         onFlow: (flow) => {
           if (flow === "cross_device") this.#qr.classList.add("on");
           this.dispatchEvent(new CustomEvent("verysafe-verify:flow", { detail: { flow }, bubbles: true }));
+        },
+        onFallback: (reason) => {
+          this.dispatchEvent(new CustomEvent("verysafe-verify:fallback", { detail: { reason }, bubbles: true }));
         },
         onStatus: (status) => {
           this.#status.textContent = status === "pending" ? "Waiting for your wallet…" : status;

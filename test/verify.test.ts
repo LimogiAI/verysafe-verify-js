@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { Transport } from "../src/browser/transport.js";
+import { type Transport, TransportError } from "../src/browser/transport.js";
 import { complete, DEFAULT_STORAGE_KEY, verify } from "../src/browser/verify.js";
 import type { Flow, PageStart } from "../src/shared/types.js";
 
@@ -107,6 +107,30 @@ describe("verify, the browser prompt", () => {
     expect(rendered).toEqual(["openid4vp://?request_uri=https://verifier.example/cross_device"]);
     expect(statuses).toEqual(["pending", "verified"]);
     expect(result).toEqual({ outcome: "verified", id: "v-cross_device", flow: "cross_device" });
+  });
+
+  it("falls back, and says why, when the customer's server refuses a prompt start", async () => {
+    setBrowser({ userAgent: PHONE, api: { allows: () => true } });
+    const t = fakeTransport();
+    const refusing: Transport = {
+      ...t,
+      start: async (flow) => {
+        if (flow === "dc_api") throw new TransportError("this page's origin is not registered", 400);
+        return t.start(flow);
+      },
+    };
+    const reasons: string[] = [];
+    const result = await verify({ transport: refusing, credentials: { get: async () => null }, fetch: vi.fn() as unknown as typeof fetch, navigate: () => {}, onFallback: (r) => reasons.push(r) });
+    expect(result).toEqual({ outcome: "redirected", id: "v-same_device", flow: "same_device" });
+    expect(reasons).toEqual(["The server refused a browser-prompt start: this page's origin is not registered"]);
+    expect(t.starts).toEqual(["same_device"]);
+  });
+
+  it("does not swallow an outage of the customer's server", async () => {
+    setBrowser({ userAgent: PHONE, api: { allows: () => true } });
+    const t = fakeTransport();
+    const down: Transport = { ...t, start: async () => { throw new TransportError("gateway", 502); } };
+    await expect(verify({ transport: down, credentials: { get: async () => null }, fetch: vi.fn() as unknown as typeof fetch })).rejects.toThrow(/gateway/);
   });
 
   it("falls back when the browser answers with no credential", async () => {
