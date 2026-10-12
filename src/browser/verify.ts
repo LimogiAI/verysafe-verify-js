@@ -45,8 +45,8 @@ export type VerifyResult =
   | { outcome: "verified" | "failed" | "expired"; id: string; flow: Flow; reason?: string }
   /** The wallet is opening on this phone. The person comes back to the return page, where `complete` finishes. */
   | { outcome: "redirected"; id: string; flow: "same_device" }
-  /** The person dismissed the prompt, or the page aborted. `fallback` is the way to offer next, if the page wants to. */
-  | { outcome: "cancelled"; id?: string; flow: Flow; fallback?: Flow };
+  /** The person dismissed the prompt, or the page aborted. `fallback` is the way to offer next, if the page wants to; `reason` is the browser's own error. */
+  | { outcome: "cancelled"; id?: string; flow: Flow; fallback?: Flow; reason?: string };
 
 export const DEFAULT_STORAGE_KEY = "verysafe-verify";
 
@@ -94,6 +94,12 @@ function errorName(error: unknown): string {
   return error !== null && typeof error === "object" && typeof (error as { name?: unknown }).name === "string"
     ? (error as { name: string }).name
     : "";
+}
+
+function describe(error: unknown): string {
+  const name = errorName(error);
+  const message = error instanceof Error ? error.message : String(error);
+  return name.length > 0 ? `${name}: ${message}` : message;
 }
 
 /**
@@ -148,10 +154,16 @@ async function browserPrompt(options: VerifyOptions): Promise<PromptOutcome> {
     const name = errorName(error);
     // The person dismissed the prompt, or the page aborted: not a reason to open a wallet uninvited.
     if (name === "AbortError" || name === "NotAllowedError") {
-      return { outcome: "cancelled", id: start.id, flow: "dc_api", fallback: detect().phone ? "same_device" : "cross_device" };
+      return {
+        outcome: "cancelled",
+        id: start.id,
+        flow: "dc_api",
+        fallback: detect().phone ? "same_device" : "cross_device",
+        reason: describe(error),
+      };
     }
     // The browser cannot do it after all (no protocol, no support): try the next way.
-    options.onFallback?.(`The browser could not run the prompt: ${name || "unknown error"}.`);
+    options.onFallback?.(`The browser could not run the prompt: ${describe(error)}`);
     return { outcome: "fallback" };
   }
   if (credential === null || typeof credential !== "object" || typeof credential.protocol !== "string") {

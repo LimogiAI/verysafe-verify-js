@@ -90,7 +90,7 @@ describe("verify, the browser prompt", () => {
     const error = new Error("dismissed");
     error.name = "NotAllowedError";
     const result = await verify({ transport: t, credentials: { get: async () => { throw error; } }, fetch: vi.fn() as unknown as typeof fetch });
-    expect(result).toEqual({ outcome: "cancelled", id: "v-dc_api", flow: "dc_api", fallback: "same_device" });
+    expect(result).toEqual({ outcome: "cancelled", id: "v-dc_api", flow: "dc_api", fallback: "same_device", reason: "NotAllowedError: dismissed" });
     expect(t.starts).toEqual(["dc_api"]);
   });
 
