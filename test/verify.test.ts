@@ -220,6 +220,16 @@ describe("verify, a QR code on a computer", () => {
     expect(result.outcome).toBe("cancelled");
   });
 
+  it("uses a start made ahead for the QR code too", async () => {
+    setBrowser({ userAgent: LAPTOP });
+    const t = fakeTransport();
+    const prepared = await t.start("cross_device");
+    t.starts.length = 0;
+    const result = await verify({ transport: t, prepared, renderQr: () => {}, pollIntervalMs: 1 });
+    expect(result).toEqual({ outcome: "verified", id: "v-cross_device", flow: "cross_device" });
+    expect(t.starts).toEqual([]);
+  });
+
   it("honours a preferred flow over detection", async () => {
     setBrowser({ userAgent: PHONE });
     const t = fakeTransport();

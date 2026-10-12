@@ -73,18 +73,36 @@ export class VerySafeVerifyElement extends HTMLElement {
 
   connectedCallback(): void {
     this.#label();
-    this.#prepare();
     if (new URL(location.href).searchParams.has("response_code")) {
-      // After the page's own scripts have run, so that they see the result.
-      const finish = () => void this.finish();
+      // A return page finishes first, after the page's own scripts have run so
+      // that they see the result; a start is made ready only then.
+      const finish = () => void this.finish().finally(() => this.#prepare());
       if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", finish, { once: true });
       else setTimeout(finish, 0);
+    } else {
+      this.#prepare();
     }
+    window.addEventListener("pageshow", this.#onShow);
+    document.addEventListener("visibilitychange", this.#onShow);
   }
 
   disconnectedCallback(): void {
     this.#abort?.abort();
+    this.#dropPrepared();
+    window.removeEventListener("pageshow", this.#onShow);
+    document.removeEventListener("visibilitychange", this.#onShow);
+  }
+
+  /** A tab that handed off to the wallet and comes back to view gets a start ready again. */
+  readonly #onShow = (): void => {
+    if (document.visibilityState !== "hidden" && this.#prepared === undefined && this.#prepareTimer === undefined) {
+      this.#prepare();
+    }
+  };
+
+  #dropPrepared(): void {
     if (this.#prepareTimer !== undefined) clearTimeout(this.#prepareTimer);
+    this.#prepareTimer = undefined;
     this.#prepared = undefined;
   }
 
@@ -137,7 +155,8 @@ export class VerySafeVerifyElement extends HTMLElement {
     const preferFlow = this.#preferredFlow();
     const pollAttribute = Number(this.getAttribute("poll-interval"));
     const prepared = this.#prepared;
-    this.#prepared = undefined;
+    this.#dropPrepared();
+    let redirected = false;
     try {
       const result = await verify({
         transport: httpTransport(this.endpoint),
@@ -158,7 +177,8 @@ export class VerySafeVerifyElement extends HTMLElement {
           this.dispatchEvent(new CustomEvent("verysafe-verify:status", { detail: { status }, bubbles: true }));
         },
       });
-      if (result.outcome !== "redirected") {
+      redirected = result.outcome === "redirected";
+      if (!redirected) {
         this.#qr.classList.remove("on");
         this.#status.textContent = result.outcome === "cancelled" ? "" : result.outcome;
       }
@@ -167,7 +187,8 @@ export class VerySafeVerifyElement extends HTMLElement {
     } finally {
       if (this.#abort === abort) this.#abort = undefined;
       this.#button.disabled = false;
-      this.#prepare();
+      // A tab on its way to the wallet needs no start; one is made ready when it is shown again.
+      if (!redirected) this.#prepare();
     }
   }
 
