@@ -13,6 +13,15 @@ export interface VerifyOptions {
   protocols?: readonly string[];
   /** Skips detection and tries this way. For a page that knows better, or to retry after a cancel. */
   preferFlow?: Flow;
+  /**
+   * A start made before the tap, on page load. Chrome opens the prompt, and
+   * a wallet's link, only within a few seconds of the person's tap: too short
+   * for a start through the customer's server. So start ahead
+   * (`transport.start(detect().flow)`), hand the result here, and refresh it
+   * every few minutes; the element does this by itself. A prepared start for
+   * another way than the one tried is ignored.
+   */
+  prepared?: PageStart | Promise<PageStart | undefined> | undefined;
   /** How often to ask the customer's server about a QR code's verification; 2 seconds by default, which is the verifier's poll budget. */
   pollIntervalMs?: number;
   /** Stops a prompt or a poll. */
@@ -127,10 +136,15 @@ export async function verify(options: VerifyOptions): Promise<VerifyResult> {
 
 type PromptOutcome = VerifyResult | { outcome: "fallback" };
 
+async function startOf(options: VerifyOptions, flow: Flow): Promise<PageStart> {
+  const prepared = options.prepared === undefined ? undefined : await options.prepared;
+  return prepared !== undefined && prepared.flow === flow ? prepared : options.transport.start(flow);
+}
+
 async function browserPrompt(options: VerifyOptions): Promise<PromptOutcome> {
   let start: PageStart;
   try {
-    start = await options.transport.start("dc_api");
+    start = await startOf(options, "dc_api");
   } catch (error) {
     // The customer's server, or the verifier behind it, refused a prompt start:
     // the page's origin is not registered, say. The next way may still work.
@@ -211,7 +225,7 @@ async function browserPrompt(options: VerifyOptions): Promise<PromptOutcome> {
 }
 
 async function sameDevice(options: VerifyOptions): Promise<VerifyResult> {
-  const start = await options.transport.start("same_device");
+  const start = await startOf(options, "same_device");
   if (typeof start.authorizationRequestUri !== "string") {
     return { outcome: "failed", id: start.id, flow: "same_device", reason: "The start carried no link." };
   }

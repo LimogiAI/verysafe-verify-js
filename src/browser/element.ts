@@ -1,4 +1,5 @@
-import type { Flow } from "../shared/types.js";
+import type { Flow, PageStart } from "../shared/types.js";
+import { detect } from "./detect.js";
 import { httpTransport } from "./transport.js";
 import { complete, type CompleteResult, verify, type VerifyResult } from "./verify.js";
 
@@ -11,10 +12,17 @@ button { font: inherit; cursor: pointer; }
 .status { margin-top: 0.5rem; }
 `;
 
+/** How long a start made ahead of the tap is kept before a fresh one is made: a link's request lives five minutes. */
+export const DEFAULT_PREPARE_TTL_MS = 4 * 60 * 1000;
+
 /**
  * `<verysafe-verify endpoint="/api/verify">`: a button that runs `verify` in
  * the order the library tries, a QR code when one is needed, and a status
- * line. On a return page it runs `complete` on its own. It dispatches
+ * line. Where the way to try is the prompt or a link, it starts the
+ * verification ahead of the tap and refreshes it every few minutes, since
+ * Chrome opens a prompt or a wallet only within seconds of the tap;
+ * `prepare="off"` turns that off. On a return page it runs `complete` on its
+ * own. It dispatches
  * `verysafe-verify:flow`, `verysafe-verify:fallback`, `verysafe-verify:status` and `verysafe-verify:result`
  * events, with the library's values in `detail`. Styles come through a
  * constructed stylesheet, so a strict Content Security Policy is no obstacle;
@@ -31,6 +39,8 @@ export class VerySafeVerifyElement extends HTMLElement {
   #qr: HTMLDivElement;
   #status: HTMLParagraphElement;
   #abort: AbortController | undefined;
+  #prepared: Promise<PageStart | undefined> | undefined;
+  #prepareTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor() {
     super();
@@ -63,6 +73,7 @@ export class VerySafeVerifyElement extends HTMLElement {
 
   connectedCallback(): void {
     this.#label();
+    this.#prepare();
     if (new URL(location.href).searchParams.has("response_code")) {
       // After the page's own scripts have run, so that they see the result.
       const finish = () => void this.finish();
@@ -73,6 +84,35 @@ export class VerySafeVerifyElement extends HTMLElement {
 
   disconnectedCallback(): void {
     this.#abort?.abort();
+    if (this.#prepareTimer !== undefined) clearTimeout(this.#prepareTimer);
+    this.#prepared = undefined;
+  }
+
+  #preferredFlow(): Flow | undefined {
+    const value = this.getAttribute("prefer-flow");
+    return value === "dc_api" || value === "same_device" || value === "cross_device" ? value : undefined;
+  }
+
+  /** Starts ahead of the tap, for the prompt and for a link, and again before the start goes stale. */
+  #prepare(): void {
+    if (this.#prepareTimer !== undefined) clearTimeout(this.#prepareTimer);
+    this.#prepareTimer = undefined;
+    if (this.getAttribute("prepare") === "off" || !this.isConnected) return;
+    const flow = this.#preferredFlow() ?? detect().flow;
+    if (flow === "cross_device") return;
+    let endpoint: string;
+    try {
+      endpoint = this.endpoint;
+    } catch {
+      return;
+    }
+    this.#prepared = httpTransport(endpoint)
+      .start(flow)
+      .then(
+        (start) => start,
+        () => undefined,
+      );
+    this.#prepareTimer = setTimeout(() => this.#prepare(), DEFAULT_PREPARE_TTL_MS);
   }
 
   #label(): void {
@@ -94,16 +134,17 @@ export class VerySafeVerifyElement extends HTMLElement {
     this.#qr.classList.remove("on");
     this.#qr.replaceChildren();
     this.#status.textContent = "";
-    const preferFlow = this.getAttribute("prefer-flow");
+    const preferFlow = this.#preferredFlow();
     const pollAttribute = Number(this.getAttribute("poll-interval"));
+    const prepared = this.#prepared;
+    this.#prepared = undefined;
     try {
       const result = await verify({
         transport: httpTransport(this.endpoint),
         qrElement: this.#qr,
         signal: abort.signal,
-        ...(preferFlow === "dc_api" || preferFlow === "same_device" || preferFlow === "cross_device"
-          ? { preferFlow: preferFlow as Flow }
-          : {}),
+        ...(prepared === undefined ? {} : { prepared }),
+        ...(preferFlow === undefined ? {} : { preferFlow }),
         ...(Number.isFinite(pollAttribute) && pollAttribute >= 1000 ? { pollIntervalMs: pollAttribute } : {}),
         onFlow: (flow) => {
           if (flow === "cross_device") this.#qr.classList.add("on");
@@ -126,6 +167,7 @@ export class VerySafeVerifyElement extends HTMLElement {
     } finally {
       if (this.#abort === abort) this.#abort = undefined;
       this.#button.disabled = false;
+      this.#prepare();
     }
   }
 

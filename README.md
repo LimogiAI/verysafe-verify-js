@@ -62,21 +62,26 @@ a page tells you.
 ## Your page
 
 ```js
-import { verify, complete, httpTransport } from "@verysafe/verify/browser";
+import { verify, complete, detect, httpTransport } from "@verysafe/verify/browser";
 
 const transport = httpTransport("/api/verify");
 
 // On the return page, first: finishes a same-device verification, if this is one.
 const returned = await complete({ transport });
 
+// On page load, start ahead: Chrome opens the prompt, or a wallet's link, only
+// within seconds of the tap, too short for a start through your server.
+const prepared = transport.start(detect().flow);
+
 // On a click:
-const result = await verify({ transport, qrElement: document.querySelector("#qr") });
+const result = await verify({ transport, prepared, qrElement: document.querySelector("#qr") });
 // { outcome: "verified" | "failed" | "expired", id, flow }
 // { outcome: "redirected", id }            the wallet is opening on this phone
 // { outcome: "cancelled", fallback }       the person dismissed the prompt; offer `fallback` if you like
 ```
 
-Or the element, which does both and dispatches `verysafe-verify:flow`,
+Or the element, which does all of that, refreshing the start every four
+minutes, and dispatches `verysafe-verify:flow`,
 `verysafe-verify:fallback`, `verysafe-verify:status` and
 `verysafe-verify:result` events:
 

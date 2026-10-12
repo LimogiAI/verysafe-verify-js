@@ -24,6 +24,12 @@ Semantic Versioning on this package's own line.
   storage of its own. Found in a round trip with the EU reference wallet on
   Android on 2026-10-12. The element finishes a return after the page's own
   scripts have run, so they see the result.
+- The element starts the prompt's or the link's verification ahead of the tap,
+  on page load, and refreshes it every four minutes; `verify` takes such a
+  start as `prepared`. Chrome opens a prompt only within seconds of the tap
+  ("requires transient activation"), too short for a start through the
+  customer's server and the verifier. Found in the production round trip of
+  2026-10-12. Each page load therefore starts a verification.
 - After the browser prompt's answer is relayed, the page asks the customer's
   server for the status once, so the server reads the result with its key at
   once, within the verifier's 15 minutes, and the server's word is the page's
