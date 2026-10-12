@@ -24,6 +24,9 @@ Semantic Versioning on this package's own line.
   storage of its own. Found in a round trip with the EU reference wallet on
   Android on 2026-10-12. The element finishes a return after the page's own
   scripts have run, so they see the result.
+- A cancelled prompt carries the browser's own error as `reason`, and a
+  fallback's reason names it too, so a page can tell a dismissal from a
+  browser that found no wallet.
 - `verify` falls back from the prompt when the customer's server refuses the
   prompt's start (a page origin not registered, say), and tells the page why
   through `onFallback`; the element dispatches `verysafe-verify:fallback`.
