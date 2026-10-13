@@ -1,11 +1,27 @@
-import { type Flow, FLOWS, isFlow, type PageReply, type PageStart, type PageStatus } from "../shared/types.js";
+import {
+  DC_API_PROTOCOLS,
+  type DcApiProtocol,
+  type Flow,
+  FLOWS,
+  isDcApiProtocol,
+  isFlow,
+  type PageReply,
+  type PageStart,
+  type PageStatus,
+} from "../shared/types.js";
 import type { StartedVerification, StartInput, Verification, VerySafeClient } from "./client.js";
 import { VerySafeApiError } from "./client.js";
 
 export interface PageHandlerOptions {
   /** The return page for `same_device`, or a function of the flow. Without it, a same-device start is refused. */
   returnUrl?: string | ((flow: Flow) => string | undefined);
-  /** What every start carries besides `flow`, or a function of the flow. `linkScheme` is dropped for `dc_api`. */
+  /**
+   * What every start carries besides `flow`, or a function of the flow.
+   * `linkScheme` is dropped for `dc_api`. Its `dcApiProtocols` is the most a
+   * page may be offered: the page asks for the protocols its browser allows,
+   * and gets those among them. Its `dcApiOrigin`, when set, wins over the
+   * request's own origin.
+   */
   start?: Partial<Omit<StartInput, "flow">> | ((flow: Flow) => Partial<Omit<StartInput, "flow">>);
   /** The flows the page may ask for; all three by default. */
   allowFlows?: readonly Flow[];
@@ -13,6 +29,12 @@ export interface PageHandlerOptions {
   ownsVerification?: (id: string) => boolean | Promise<boolean>;
   /** Called with errors from the verifier that the page is not told about in full. */
   onError?: (error: unknown) => void;
+}
+
+/** What the server knows about the page's request beyond its body. */
+export interface PageContext {
+  /** The request's `Origin` header: the page's origin as the browser asserts it. `handleNodeRequest` passes it. */
+  origin?: string | undefined;
 }
 
 export interface PageHandlerResult {
@@ -26,7 +48,14 @@ export interface PageHandlerResult {
   started?: StartedVerification;
 }
 
-const PAGE_START_FIELDS = ["id", "flow", "status", "authorizationRequestUri", "dcApiRequests", "dcApiResponseUrl"] as const;
+const PAGE_START_FIELDS = [
+  "id",
+  "flow",
+  "status",
+  "authorizationRequestUri",
+  "dcApiRequests",
+  "dcApiResponseUrl",
+] as const;
 
 function toPageStart(started: StartedVerification): PageStart {
   const out: Record<string, unknown> = {};
@@ -53,6 +82,7 @@ export async function handlePageRequest(
   client: VerySafeClient,
   body: unknown,
   options: PageHandlerOptions = {},
+  context: PageContext = {},
 ): Promise<PageHandlerResult> {
   if (body === null || typeof body !== "object" || Array.isArray(body)) {
     return refused(400, 'Post a JSON object with an "action".');
@@ -61,7 +91,7 @@ export async function handlePageRequest(
   try {
     switch (request.action) {
       case "start":
-        return await start(client, request, options);
+        return await start(client, request, options, context);
       case "status":
       case "exchange":
         return await readOrExchange(client, request, options);
@@ -80,17 +110,119 @@ export async function handlePageRequest(
   }
 }
 
+/** The verifier's format of an mdoc credential type. */
+const MDOC_FORMAT = "mso_mdoc";
+
+/** An origin as a browser serialises it, https, or http on this machine only. */
+function isPageOrigin(value: unknown): value is string {
+  if (typeof value !== "string" || value.length === 0) return false;
+  try {
+    const url = new URL(value);
+    const local = url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+    return url.origin === value && (url.protocol === "https:" || local);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Which prompt protocols this start offers (`dcApiProtocols`), and for which
+ * page (`dcApiOrigin`): what the page asked for, narrowed to what the
+ * server's `start` option allows, and to what the credential asked for can
+ * answer: the ISO mdoc protocol needs an mdoc, which `GET
+ * /v1/credential-types` says. Or why the start is refused.
+ */
+async function offerProtocols(
+  client: VerySafeClient,
+  request: Record<string, unknown>,
+  input: StartInput,
+  context: PageContext,
+): Promise<PageHandlerResult | undefined> {
+  const asked = request.dcApiProtocols;
+  if (asked !== undefined) {
+    if (
+      !Array.isArray(asked) ||
+      asked.length === 0 ||
+      !asked.every(isDcApiProtocol) ||
+      new Set(asked).size !== asked.length
+    ) {
+      return refused(
+        400,
+        `"dcApiProtocols" lists ${DC_API_PROTOCOLS.map((p) => `"${p}"`).join(" and/or ")}, each once.`,
+      );
+    }
+  }
+  const allowed = input.dcApiProtocols;
+  let offered: DcApiProtocol[] | undefined =
+    asked === undefined
+      ? allowed
+      : allowed === undefined
+        ? (asked as DcApiProtocol[])
+        : (asked as DcApiProtocol[]).filter((p) => allowed.includes(p));
+  if (offered !== undefined && offered.length === 0) {
+    return refused(400, "This server offers none of the browser-prompt protocols the page asked for.");
+  }
+  if (offered?.includes("org-iso-mdoc")) {
+    // The verifier's default credential type is the PID as an SD-JWT VC, which
+    // the ISO mdoc protocol cannot ask for. A named type is looked up; one
+    // the verifier does not list, or a lookup that fails, leaves the offer to
+    // the verifier's own refusal.
+    let mdoc = false;
+    if (input.credentialType !== undefined) {
+      try {
+        const types = await client.credentialTypes();
+        const type = types.find((t) => t.id === input.credentialType);
+        mdoc = type === undefined || type.format === MDOC_FORMAT;
+      } catch {
+        mdoc = true;
+      }
+    }
+    if (!mdoc) offered = offered.filter((p) => p !== "org-iso-mdoc");
+    if (offered.length === 0) {
+      return refused(
+        400,
+        "This browser's only prompt protocol asks for an mdoc, and the credential asked for here is not one.",
+      );
+    }
+  }
+  if (offered === undefined) delete input.dcApiProtocols;
+  else input.dcApiProtocols = offered;
+
+  if (offered?.includes("org-iso-mdoc")) {
+    const origin = input.dcApiOrigin ?? context.origin ?? request.dcApiOrigin;
+    if (origin === undefined) {
+      // The verifier takes the one registered origin, or says which to name.
+      delete input.dcApiOrigin;
+    } else if (!isPageOrigin(origin)) {
+      return refused(400, '"dcApiOrigin" must be the page\'s origin, such as https://shop.example.');
+    } else {
+      input.dcApiOrigin = origin;
+    }
+  } else {
+    delete input.dcApiOrigin;
+  }
+  return undefined;
+}
+
 async function start(
   client: VerySafeClient,
   request: Record<string, unknown>,
   options: PageHandlerOptions,
+  context: PageContext,
 ): Promise<PageHandlerResult> {
   const flow = request.flow;
   if (!isFlow(flow)) return refused(400, `"flow" must be one of ${FLOWS.join(", ")}.`);
   if (!(options.allowFlows ?? FLOWS).includes(flow)) return refused(400, `The flow "${flow}" is not offered here.`);
   const base = typeof options.start === "function" ? options.start(flow) : (options.start ?? {});
   const input: StartInput = { ...base, flow };
-  if (flow === "dc_api") delete input.linkScheme;
+  if (flow === "dc_api") {
+    delete input.linkScheme;
+    const problem = await offerProtocols(client, request, input, context);
+    if (problem !== undefined) return problem;
+  } else {
+    delete input.dcApiProtocols;
+    delete input.dcApiOrigin;
+  }
   if (flow === "same_device") {
     const returnUrl = typeof options.returnUrl === "function" ? options.returnUrl(flow) : options.returnUrl;
     if (typeof returnUrl !== "string" || returnUrl.length === 0) {
@@ -117,7 +249,8 @@ async function readOrExchange(
   let verification: Verification;
   if (request.action === "exchange") {
     const code = request.responseCode;
-    if (typeof code !== "string" || code.length === 0 || code.length > 512) return refused(400, '"responseCode" is required.');
+    if (typeof code !== "string" || code.length === 0 || code.length > 512)
+      return refused(400, '"responseCode" is required.');
     verification = await client.exchange(id, code);
   } else {
     verification = await client.read(id);

@@ -54,7 +54,8 @@ export async function handleNodeRequest(
     let body: unknown;
     try {
       body = await readJsonBody(request);
-      result = await handlePageRequest(client, body, options);
+      const origin = request.headers.origin;
+      result = await handlePageRequest(client, body, options, typeof origin === "string" ? { origin } : {});
     } catch (error) {
       result = {
         status: error instanceof RangeError ? 413 : 400,

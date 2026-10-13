@@ -1,4 +1,4 @@
-import type { Flow, VerificationStatus } from "../shared/types.js";
+import type { DcApiProtocol, Flow, VerificationStatus } from "../shared/types.js";
 import { VERSION } from "../version.js";
 
 export interface ClientOptions {
@@ -29,6 +29,24 @@ export interface StartInput {
   metadata?: Record<string, string>;
   /** The registered intended use this check is for, where the key belongs to a Service with registered uses. */
   intendedUse?: string;
+  /**
+   * `dc_api`: which prompt protocols to offer the browser, in the order
+   * `dcApiRequests` lists them; the verifier's default is `openid4vp-v1-signed`
+   * alone. `org-iso-mdoc`, the only protocol Safari has, needs an mdoc
+   * `credentialType` (`eu_pid_mdoc`, `iso_mdl`). In `handlePageRequest`'s
+   * `start` option this is the most the page may be offered; the page asks
+   * for what its browser allows.
+   */
+  dcApiProtocols?: DcApiProtocol[];
+  /** `dc_api` with `org-iso-mdoc`: the origin of the page that asks, a registered browser origin. `handlePageRequest` fills it from the request. */
+  dcApiOrigin?: string;
+}
+
+/** One credential type the verifier offers, as `GET /v1/credential-types` lists it: what `handlePageRequest` needs of it. */
+export interface CredentialTypeSummary {
+  id: string;
+  /** `dc+sd-jwt` or `mso_mdoc`. */
+  format: string;
 }
 
 /** The verifier's answer to a start. Nothing in it is a claim. */
@@ -103,6 +121,7 @@ export class VerySafeClient {
   readonly #apiKey: string;
   readonly #fetch: typeof fetch;
   readonly #headers: Record<string, string>;
+  #credentialTypes: Promise<CredentialTypeSummary[]> | undefined;
 
   constructor(options: ClientOptions) {
     if (typeof options.apiKey !== "string" || options.apiKey.length === 0) throw new TypeError("apiKey is required.");
@@ -115,6 +134,31 @@ export class VerySafeClient {
   /** `POST /v1/verifications`. */
   start(input: StartInput): Promise<StartedVerification> {
     return this.#request<StartedVerification>("POST", "/v1/verifications", input);
+  }
+
+  /**
+   * `GET /v1/credential-types`, read once per client and kept: the types and
+   * their formats. A failed read is not kept, so the next call tries again.
+   */
+  credentialTypes(): Promise<CredentialTypeSummary[]> {
+    this.#credentialTypes ??= this.#request<{ credentialTypes?: unknown }>("GET", "/v1/credential-types")
+      .then((body) => {
+        const listed = Array.isArray(body.credentialTypes) ? body.credentialTypes : [];
+        return listed
+          .filter(
+            (t): t is { id: string; format: string } =>
+              t !== null &&
+              typeof t === "object" &&
+              typeof (t as { id?: unknown }).id === "string" &&
+              typeof (t as { format?: unknown }).format === "string",
+          )
+          .map(({ id, format }) => ({ id, format }));
+      })
+      .catch((error: unknown) => {
+        this.#credentialTypes = undefined;
+        throw error;
+      });
+    return this.#credentialTypes;
   }
 
   /** `GET /v1/verifications/{id}`. The claims are in `result` once the status is `verified`. */
@@ -142,7 +186,7 @@ export class VerySafeClient {
     if (body !== undefined) init.body = JSON.stringify(body);
     const response = await this.#fetch(`${this.baseUrl}${path}`, init);
     const text = await response.text();
-    let parsed: unknown ;
+    let parsed: unknown;
     if (text.length > 0) {
       try {
         parsed = JSON.parse(text);

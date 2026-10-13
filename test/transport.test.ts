@@ -24,6 +24,24 @@ describe("httpTransport", () => {
     expect((first[1].headers as Record<string, string>)["x-csrf"]).toBe("t");
   });
 
+  it("sends the prompt protocols the browser allows, and the page's origin, with a dc_api start only", async () => {
+    const f = responding(201, { id: "v1", flow: "dc_api", status: "pending" });
+    const t = httpTransport("/api/verify", { fetch: f as unknown as typeof fetch });
+    await t.start("dc_api", {
+      dcApiProtocols: ["org-iso-mdoc", "openid4vp-v1-signed"],
+      dcApiOrigin: "https://shop.example",
+    });
+    await t.start("same_device");
+    const calls = f.mock.calls as unknown as [string, RequestInit][];
+    expect(JSON.parse(String(calls[0]?.[1].body))).toEqual({
+      action: "start",
+      flow: "dc_api",
+      dcApiProtocols: ["org-iso-mdoc", "openid4vp-v1-signed"],
+      dcApiOrigin: "https://shop.example",
+    });
+    expect(JSON.parse(String(calls[1]?.[1].body))).toEqual({ action: "start", flow: "same_device" });
+  });
+
   it("throws the server's error with its status and Retry-After", async () => {
     const f = responding(429, { error: "slow down" }, { "retry-after": "3" });
     const t = httpTransport("/api/verify", { fetch: f as unknown as typeof fetch });

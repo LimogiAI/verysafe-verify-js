@@ -14,9 +14,23 @@ describe("createClient", () => {
   });
 
   it("starts with the key in x-api-key and the body as the verifier's API wants it", async () => {
-    const f = responding(201, { id: "v1", status: "pending", flow: "same_device", authorizationRequestUri: "openid4vp://x" });
-    const client = createClient({ baseUrl: "https://verify.example", apiKey: "secret", fetch: f as unknown as typeof fetch });
-    const started = await client.start({ flow: "same_device", returnUrl: "https://shop.example/return", linkScheme: "haip-vp://", claims: ["age_over_18"] });
+    const f = responding(201, {
+      id: "v1",
+      status: "pending",
+      flow: "same_device",
+      authorizationRequestUri: "openid4vp://x",
+    });
+    const client = createClient({
+      baseUrl: "https://verify.example",
+      apiKey: "secret",
+      fetch: f as unknown as typeof fetch,
+    });
+    const started = await client.start({
+      flow: "same_device",
+      returnUrl: "https://shop.example/return",
+      linkScheme: "haip-vp://",
+      claims: ["age_over_18"],
+    });
     expect(started.id).toBe("v1");
     const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe("https://verify.example/v1/verifications");
@@ -25,12 +39,26 @@ describe("createClient", () => {
     expect(headers["x-api-key"]).toBe("secret");
     expect(headers["content-type"]).toBe("application/json");
     expect(headers["user-agent"]).toMatch(/^verysafe-verify\/\d/);
-    expect(JSON.parse(String(init.body))).toEqual({ flow: "same_device", returnUrl: "https://shop.example/return", linkScheme: "haip-vp://", claims: ["age_over_18"] });
+    expect(JSON.parse(String(init.body))).toEqual({
+      flow: "same_device",
+      returnUrl: "https://shop.example/return",
+      linkScheme: "haip-vp://",
+      claims: ["age_over_18"],
+    });
   });
 
   it("reads and exchanges on the verification's own paths", async () => {
-    const f = responding(200, { id: "v 1", status: "verified", flow: "same_device", result: { claims: { age_over_18: true } } });
-    const client = createClient({ baseUrl: "https://verify.example", apiKey: "secret", fetch: f as unknown as typeof fetch });
+    const f = responding(200, {
+      id: "v 1",
+      status: "verified",
+      flow: "same_device",
+      result: { claims: { age_over_18: true } },
+    });
+    const client = createClient({
+      baseUrl: "https://verify.example",
+      apiKey: "secret",
+      fetch: f as unknown as typeof fetch,
+    });
     await client.read("v 1");
     const v = await client.exchange("v 1", "c0de");
     expect(v.result).toEqual({ claims: { age_over_18: true } });
@@ -43,7 +71,11 @@ describe("createClient", () => {
 
   it("throws the verifier's error with its status and Retry-After", async () => {
     const f = responding(429, { error: "budget" }, { "retry-after": "7" });
-    const client = createClient({ baseUrl: "https://verify.example", apiKey: "secret", fetch: f as unknown as typeof fetch });
+    const client = createClient({
+      baseUrl: "https://verify.example",
+      apiKey: "secret",
+      fetch: f as unknown as typeof fetch,
+    });
     const error = await client.read("v1").catch((e: unknown) => e);
     expect(error).toBeInstanceOf(VerySafeApiError);
     expect((error as VerySafeApiError).status).toBe(429);
