@@ -27,7 +27,7 @@ npm install @verysafe/verify
 Or one `<script>` tag, which registers `<verysafe-verify>` on load:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@verysafe/verify@0.1.0/dist/verysafe-verify.iife.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@verysafe/verify@0.1.1/dist/verysafe-verify.iife.js"></script>
 ```
 
 ## Your server
@@ -156,6 +156,7 @@ self-hosted installation they are its `RETURN_URL_ORIGINS` and
 
 | Package | Verifier API |
 |---|---|
+| 0.1.1 | The API as of 2026-10-13: a start may also choose `eudi-openid4vp://` or `mdoc-openid4vp://` |
 | 0.1.0 | The API as of 2026-10-12. A start always carries `flow`, which the hosted service requires from 2026-11-04 |
 
 ## Licence

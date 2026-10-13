@@ -6,6 +6,13 @@ Semantic Versioning on this package's own line.
 
 ## Unreleased
 
+Nothing yet.
+
+## [0.1.1] - 2026-10-13
+
+The first version published by the `publish` workflow through npm's trusted
+publishing, with provenance.
+
 ### Added
 
 - The tab that opened the wallet learns the result when the tab the wallet
@@ -68,4 +75,5 @@ and iOS (Safari) against VerySafe's sandbox and production services on
   prompt's start (a page origin not registered, say), and tells the page why
   through `onFallback`; the element dispatches `verysafe-verify:fallback`.
 
+[0.1.1]: https://github.com/LimogiAI/verysafe-verify-js/releases/tag/v0.1.1
 [0.1.0]: https://github.com/LimogiAI/verysafe-verify-js/releases/tag/v0.1.0
