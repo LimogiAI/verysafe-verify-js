@@ -1,6 +1,6 @@
 {
   "name": "@verysafe/verify",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "The browser library for VerySafe's EU wallet verifier: the browser prompt first, then a link on a phone, then a QR code. A browser half for the page and a server half for Node.",
   "license": "Apache-2.0",
   "type": "module",

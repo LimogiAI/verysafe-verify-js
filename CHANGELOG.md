@@ -6,6 +6,16 @@ Semantic Versioning on this package's own line.
 
 ## Unreleased
 
+Nothing yet.
+
+## [0.2.0] - 2026-10-13
+
+Proven on VerySafe's production service through a customer page on
+2026-10-13: the EU reference wallet on Android answered OpenID4VP with the
+default order and the ISO mdoc protocol with that one listed first, and
+Safari on an iPhone (iOS 26) answered the ISO mdoc protocol; the record is in
+the verifier's interop document.
+
 ### Added
 
 - The ISO mdoc protocol, `org-iso-mdoc`, the only one Safari has (#14). The
