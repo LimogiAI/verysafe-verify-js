@@ -78,6 +78,8 @@ const result = await verify({ transport, prepared, qrElement: document.querySele
 // { outcome: "verified" | "failed" | "expired", id, flow }
 // { outcome: "redirected", id }            the wallet is opening on this phone
 // { outcome: "cancelled", fallback }       the person dismissed the prompt; offer `fallback` if you like
+// With onReturn, a tab that opened the wallet hears the outcome once the tab
+// the wallet brought the person back to has finished (not in Private Browsing).
 ```
 
 Or the element, which does all of that, refreshing the start every four
