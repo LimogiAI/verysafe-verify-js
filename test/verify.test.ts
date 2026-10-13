@@ -201,6 +201,39 @@ describe("verify, a link on a phone", () => {
   });
 });
 
+describe("verify, a link on a phone: the tab that opened the wallet learns the result", () => {
+  it("hears the return tab's announcement for its own id, once, and ignores others", async () => {
+    setBrowser({ userAgent: PHONE });
+    const t = fakeTransport();
+    const heard: unknown[] = [];
+    const listeners = new Set<EventListenerOrEventListenerObject>();
+    const windowObject = {
+      addEventListener: (_type: string, l: EventListenerOrEventListenerObject) => void listeners.add(l),
+      removeEventListener: (_type: string, l: EventListenerOrEventListenerObject) => void listeners.delete(l),
+    };
+    await verify({ transport: t, navigate: () => {}, onReturn: (r) => heard.push(r), windowObject });
+    expect(listeners.size).toBe(1);
+    const fire = (key: string, value: string) => {
+      for (const l of [...listeners]) (l as EventListener)(new StorageEvent("storage", { key, newValue: value }));
+    };
+    fire("verysafe-verify:result", JSON.stringify({ id: "someone-else", outcome: "verified", at: 1 }));
+    fire("other-key", JSON.stringify({ id: "v-same_device", outcome: "verified", at: 1 }));
+    expect(heard).toEqual([]);
+    fire("verysafe-verify:result", JSON.stringify({ id: "v-same_device", outcome: "verified", at: 1 }));
+    expect(heard).toEqual([{ outcome: "verified", id: "v-same_device" }]);
+    expect(listeners.size).toBe(0);
+  });
+
+  it("the return tab announces its outcome through the origin's storage", async () => {
+    const t = fakeTransport();
+    localStorage.setItem(DEFAULT_STORAGE_KEY, JSON.stringify({ id: "v-mine", at: Date.now() }));
+    await complete({ transport: t, url: "https://shop.example/return?response_code=c0de", replaceUrl: () => {} });
+    const announced = JSON.parse(localStorage.getItem("verysafe-verify:result") ?? "{}") as { id: string; outcome: string };
+    expect(announced.id).toBe("v-mine");
+    expect(announced.outcome).toBe("verified");
+  });
+});
+
 describe("verify, a QR code on a computer", () => {
   it("draws the code into the element and polls until the verifier has answered", async () => {
     setBrowser({ userAgent: LAPTOP });

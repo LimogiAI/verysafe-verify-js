@@ -6,7 +6,18 @@ Semantic Versioning on this package's own line.
 
 ## Unreleased
 
-Nothing yet.
+### Added
+
+- The tab that opened the wallet learns the result when the tab the wallet
+  brought the person back to has finished the exchange: `verify` takes
+  `onReturn`, the element shows the outcome and dispatches
+  `verysafe-verify:result` in that first tab too. Through the browser's
+  storage for the origin, so not in Private Browsing (#8).
+
+### Changed
+
+- The published manifest no longer asks for provenance itself; the publish
+  workflow does. A publish by hand needs `--provenance=false`.
 
 ## [0.1.0] - 2026-10-12
 

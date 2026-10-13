@@ -24,7 +24,8 @@ export const DEFAULT_PREPARE_TTL_MS = 4 * 60 * 1000;
  * `prepare="off"` turns that off. On a return page it runs `complete` on its
  * own. It dispatches
  * `verysafe-verify:flow`, `verysafe-verify:fallback`, `verysafe-verify:status` and `verysafe-verify:result`
- * events, with the library's values in `detail`. Styles come through a
+ * events (the last one also in the tab that opened the wallet, when the
+ * return tab has finished), with the library's values in `detail`. Styles come through a
  * constructed stylesheet, so a strict Content Security Policy is no obstacle;
  * override them from the page with `::part(button)`, `::part(qr)` and
  * `::part(status)`.
@@ -175,6 +176,13 @@ export class VerySafeVerifyElement extends HTMLElement {
         onStatus: (status) => {
           this.#status.textContent = status === "pending" ? "Waiting for your wallet…" : status;
           this.dispatchEvent(new CustomEvent("verysafe-verify:status", { detail: { status }, bubbles: true }));
+        },
+        onReturn: ({ outcome, id }) => {
+          // The wallet brought the person back in another tab, which finished; this tab shows it too.
+          this.#status.textContent = outcome;
+          this.dispatchEvent(
+            new CustomEvent("verysafe-verify:result", { detail: { outcome, id, flow: "same_device" }, bubbles: true }),
+          );
         },
       });
       redirected = result.outcome === "redirected";

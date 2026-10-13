@@ -33,6 +33,15 @@ export interface VerifyOptions {
   /** Called with each status a poll returns. */
   onStatus?: (status: VerificationStatus) => void;
   /**
+   * Same device only: called in the tab that opened the wallet when the tab
+   * the wallet brought the person back to has finished the exchange, which
+   * it announces through the browser's storage for the origin. Not in
+   * Private Browsing, where tabs share nothing.
+   */
+  onReturn?: (result: { outcome: VerificationStatus; id: string }) => void;
+  /** The window whose `storage` events announce a return; the page's by default. For tests. */
+  windowObject?: Pick<Window, "addEventListener" | "removeEventListener">;
+  /**
    * Where the id of a same-device verification is kept until the person
    * returns; `localStorage` by default. A wallet on Android brings the person
    * back in a new tab, which has no `sessionStorage` of its own, so the id is
@@ -58,6 +67,9 @@ export type VerifyResult =
   | { outcome: "cancelled"; id?: string; flow: Flow; fallback?: Flow; reason?: string };
 
 export const DEFAULT_STORAGE_KEY = "verysafe-verify";
+
+/** Where the return tab announces its outcome to the tab that opened the wallet. */
+export const DEFAULT_RESULT_KEY = "verysafe-verify:result";
 
 /** How long a same-device verification's id waits for the return: the verifier's own 15 minutes. */
 export const DEFAULT_RETURN_TTL_MS = 15 * 60 * 1000;
@@ -232,8 +244,38 @@ async function sameDevice(options: VerifyOptions): Promise<VerifyResult> {
   const storage = options.storage ?? defaultStorage();
   storage.setItem(options.storageKey ?? DEFAULT_STORAGE_KEY, JSON.stringify({ id: start.id, at: Date.now() }));
   const navigate = options.navigate ?? ((url: string) => location.assign(url));
+  if (options.onReturn !== undefined) listenForReturn(options, start.id, options.onReturn);
   navigate(start.authorizationRequestUri);
   return { outcome: "redirected", id: start.id, flow: "same_device" };
+}
+
+/** Waits, for as long as the verifier keeps the verification, for the return tab's announcement of this id. */
+function listenForReturn(
+  options: VerifyOptions,
+  id: string,
+  onReturn: (result: { outcome: VerificationStatus; id: string }) => void,
+): void {
+  const target = options.windowObject ?? window;
+  const resultKey = `${options.storageKey ?? DEFAULT_STORAGE_KEY}:result`;
+  const stop = () => {
+    clearTimeout(timer);
+    target.removeEventListener("storage", onStorage);
+  };
+  const onStorage = (event: Event) => {
+    const { key, newValue } = event as StorageEvent;
+    if (key !== resultKey || typeof newValue !== "string") return;
+    try {
+      const parsed = JSON.parse(newValue) as { id?: unknown; outcome?: unknown };
+      if (parsed.id === id && typeof parsed.outcome === "string") {
+        stop();
+        onReturn({ outcome: parsed.outcome as VerificationStatus, id });
+      }
+    } catch {
+      // Not ours.
+    }
+  };
+  const timer = setTimeout(stop, DEFAULT_RETURN_TTL_MS);
+  target.addEventListener("storage", onStorage);
 }
 
 async function crossDevice(options: VerifyOptions): Promise<VerifyResult> {
@@ -312,5 +354,12 @@ export async function complete(options: CompleteOptions): Promise<CompleteResult
   if (id === undefined) return { outcome: "no_session" };
   storage.removeItem(key);
   const { status } = await options.transport.exchange(id, code);
+  // Tell the tab that opened the wallet, if it is still open: a change to the
+  // origin's storage reaches every other tab of this browser.
+  try {
+    storage.setItem(`${key}:result`, JSON.stringify({ id, outcome: status, at: Date.now() }));
+  } catch {
+    // Storage full or refused: the return tab still has its result.
+  }
   return { outcome: status, id };
 }
