@@ -55,8 +55,7 @@
     "verysafe"
   ],
   "publishConfig": {
-    "access": "public",
-    "provenance": true
+    "access": "public"
   },
   "dependencies": {
     "qrcode-generator": "2.0.4"
