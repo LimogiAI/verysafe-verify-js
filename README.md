@@ -45,7 +45,7 @@ createServer(async (request, response) => {
   if (request.url === "/api/verify") {
     const { verification } = await handleNodeRequest(client, request, response, {
       returnUrl: "https://shop.example/verify",          // where the wallet sends the person back (same device)
-      start: { claims: ["age_over_18"] },                // what every start asks for
+      start: { credentialType: "eu_pid_mdoc", claims: ["age_over_18"] },   // what every start asks for
     });
     if (verification?.status === "verified") {
       // The claims are here and nowhere else: verification.result
@@ -55,9 +55,19 @@ createServer(async (request, response) => {
 ```
 
 With Express, Fastify or anything that parses JSON for you, call
-`handlePageRequest(client, req.body, options)` and send back its `status`
-and `reply`. Read the result yourself, from `verification`: never from what
-a page tells you.
+`handlePageRequest(client, req.body, options, { origin: req.headers.origin })`
+and send back its `status` and `reply`. Read the result yourself, from
+`verification`: never from what a page tells you.
+
+**Which prompt protocols a page gets.** The page asks for the ones its browser
+allows (`dcApiProtocols` in its start call), in the order the library offers
+them: OpenID4VP's signed request, then the ISO mdoc protocol, the only one
+Safari has. The server half forwards them, narrowed to `start.dcApiProtocols`
+when you set it, and keeps the ISO protocol only for an mdoc `credentialType`
+(`eu_pid_mdoc`, `iso_mdl`; it reads the verifier's credential types once to
+know). So a Safari user gets the prompt for an mdoc, and a link for anything
+else. The ISO protocol's request is made for one page: the server half names
+the request's own `Origin`, or `start.dcApiOrigin` when you set it.
 
 ## Your page
 
@@ -110,7 +120,7 @@ platform implements them with the verifier's public API
 
 | The page sends | Your server does | Your server answers |
 |---|---|---|
-| `{"action": "start", "flow": "dc_api" \| "same_device" \| "cross_device"}` | `POST /v1/verifications` with that `flow`, your `returnUrl` for `same_device`, and what you ask for | `{id, flow, status, authorizationRequestUri?, dcApiRequests?, dcApiResponseUrl?}` |
+| `{"action": "start", "flow": "dc_api" \| "same_device" \| "cross_device", "dcApiProtocols"?: [...], "dcApiOrigin"?: "https://shop.example"}` | `POST /v1/verifications` with that `flow`, your `returnUrl` for `same_device`, and what you ask for; for `dc_api`, the protocols the page's browser allows that you offer (`org-iso-mdoc` for an mdoc only) and the page's origin, from the request's `Origin` header | `{id, flow, status, authorizationRequestUri?, dcApiRequests?, dcApiResponseUrl?}` |
 | `{"action": "status", "id"}` | `GET /v1/verifications/{id}` | `{id, status}` |
 | `{"action": "exchange", "id", "responseCode"}` | `POST /v1/verifications/{id}/exchange` | `{id, status}` |
 
@@ -134,11 +144,16 @@ self-hosted installation they are its `RETURN_URL_ORIGINS` and
 ## Browsers
 
 - **Chrome 141 or later**, Android and computer: the prompt. The library asks
-  the browser whether it allows `openid4vp-v1-signed`, through the W3C API's
-  own check where the browser has it.
-- **Safari, and every browser on an iPhone**: the prompt offers only
-  `org-iso-mdoc`, which the verifier does not speak yet, so the library opens
-  the wallet by link. Chrome on an iPhone runs on Safari's engine.
+  the browser which of the verifier's two protocols it allows, through the
+  W3C API's own check where the browser has it, and offers those in order:
+  `openid4vp-v1-signed`, then `org-iso-mdoc`. The EU wallet on Android takes
+  the first listed it supports; `protocols` on `verify` or the element changes
+  the order.
+- **Safari on iOS 26, and every browser on an iPhone**: the prompt, with
+  `org-iso-mdoc`, the only protocol Safari has, when the credential is an
+  mdoc (`eu_pid_mdoc`, `iso_mdl`); proven with the EU reference wallet's iOS
+  build on 2026-10-13. For any other credential the library opens the wallet
+  by link. Chrome on an iPhone runs on Safari's engine.
 - **Everything else**: a link on a phone, a QR code on a computer. Chrome on
   Android asks the person whether they trust the site before it opens the
   wallet from a link, and the wallet brings them back in a new tab; Safari on
@@ -156,6 +171,7 @@ self-hosted installation they are its `RETURN_URL_ORIGINS` and
 
 | Package | Verifier API |
 |---|---|
+| 0.2.0 | The API as of 2026-10-13: a `dc_api` start may offer `org-iso-mdoc` (`dcApiProtocols`, `dcApiOrigin`) |
 | 0.1.1 | The API as of 2026-10-13: a start may also choose `eudi-openid4vp://` or `mdoc-openid4vp://` |
 | 0.1.0 | The API as of 2026-10-12. A start always carries `flow`, which the hosted service requires from 2026-11-04 |
 

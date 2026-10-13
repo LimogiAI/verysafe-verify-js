@@ -2,7 +2,8 @@
 import { describe, expect, it } from "vitest";
 import { qrPath, qrSvg } from "../src/browser/qr.js";
 
-const LINK = "openid4vp://?client_id=x509_hash%3Aabc&request_uri=https%3A%2F%2Fverify.verysafe.id%2Fv1%2Fverifications%2F0f0a7d4a-1c2b-4e3f-9a8b-7c6d5e4f3a2b%2Frequest.jwt";
+const LINK =
+  "openid4vp://?client_id=x509_hash%3Aabc&request_uri=https%3A%2F%2Fverify.verysafe.id%2Fv1%2Fverifications%2F0f0a7d4a-1c2b-4e3f-9a8b-7c6d5e4f3a2b%2Frequest.jwt";
 
 describe("qrPath", () => {
   it("draws a code whose top-left finder pattern is seven dark modules wide", () => {

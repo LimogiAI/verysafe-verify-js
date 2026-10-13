@@ -1,12 +1,18 @@
-import type { Flow } from "../shared/types.js";
+import { DC_API_PROTOCOLS, type Flow } from "../shared/types.js";
 
-/** The browser-prompt protocol the verifier speaks today (OpenID4VP 1.0 Appendix A, signed). */
-export const DEFAULT_PROTOCOLS: readonly string[] = ["openid4vp-v1-signed"];
+/**
+ * The browser-prompt protocols the verifier speaks, in the order to offer
+ * them: OpenID4VP's signed request first, the ISO mdoc protocol second. The
+ * EU wallet on Android takes the first listed it supports; Safari has only
+ * the second and takes it whatever the order. A page that wants the ISO
+ * protocol first on Android lists it first.
+ */
+export const DEFAULT_PROTOCOLS: readonly string[] = DC_API_PROTOCOLS;
 
 export interface Detection {
   /** The browser offers the W3C Digital Credentials API. */
   digitalCredentials: boolean;
-  /** Of the protocols asked about, those the browser says it allows. Empty without the API. */
+  /** Of the protocols asked about, those the browser says it allows, in the order asked. Empty without the API. */
   protocols: string[];
   /** The page is on a phone, so a link can open the wallet on the same device. */
   phone: boolean;

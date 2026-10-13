@@ -6,7 +6,26 @@ Semantic Versioning on this package's own line.
 
 ## Unreleased
 
-Nothing yet.
+### Added
+
+- The ISO mdoc protocol, `org-iso-mdoc`, the only one Safari has (#14). The
+  page tells the server which prompt protocols its browser allows and its
+  origin (`dcApiProtocols` and `dcApiOrigin` in the start call; `Transport.start`
+  takes them, `promptStartOptions` makes them); the server half forwards
+  them to the verifier, narrowed to `start.dcApiProtocols` when set, and
+  keeps the ISO protocol only for an mdoc `credentialType`, which it learns
+  from `GET /v1/credential-types` once (`client.credentialTypes()`). The
+  request's `Origin` header names the page (`handlePageRequest`'s new
+  `context`; `handleNodeRequest` passes it). The element takes a `protocols`
+  attribute. A start whose requests are all in a protocol the browser lacks
+  falls back to a link before the prompt is tried.
+
+### Changed
+
+- `DEFAULT_PROTOCOLS` is both protocols, OpenID4VP first: on Android the EU
+  wallet keeps answering OpenID4VP, and Safari on iOS 26 gets the prompt for
+  an mdoc instead of a link. The verifier's own default, OpenID4VP alone, is
+  what a start without `dcApiProtocols` still gets.
 
 ## [0.1.1] - 2026-10-13
 

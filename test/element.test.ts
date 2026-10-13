@@ -23,7 +23,16 @@ describe("<verysafe-verify>", () => {
     let polls = 0;
     const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
       const body = JSON.parse(String(init.body)) as { action: string };
-      if (body.action === "start") return new Response(JSON.stringify({ id: "v1", flow: "cross_device", status: "pending", authorizationRequestUri: "openid4vp://?request_uri=https://v.example/x" }), { status: 201 });
+      if (body.action === "start")
+        return new Response(
+          JSON.stringify({
+            id: "v1",
+            flow: "cross_device",
+            status: "pending",
+            authorizationRequestUri: "openid4vp://?request_uri=https://v.example/x",
+          }),
+          { status: 201 },
+        );
       polls++;
       return new Response(JSON.stringify({ id: "v1", status: polls < 2 ? "pending" : "verified" }), { status: 200 });
     });
@@ -56,7 +65,15 @@ describe("<verysafe-verify>", () => {
         expect(body).toEqual({ action: "exchange", id: "v9", responseCode: "c0de" });
         return new Response(JSON.stringify({ id: "v9", status: "verified" }), { status: 200 });
       }
-      return new Response(JSON.stringify({ id: "v10", flow: "cross_device", status: "pending", authorizationRequestUri: "openid4vp://x" }), { status: 201 });
+      return new Response(
+        JSON.stringify({
+          id: "v10",
+          flow: "cross_device",
+          status: "pending",
+          authorizationRequestUri: "openid4vp://x",
+        }),
+        { status: 201 },
+      );
     });
     vi.stubGlobal("fetch", fetchMock);
     const el = document.createElement("verysafe-verify") as VerySafeVerifyElement;
@@ -73,12 +90,23 @@ describe("<verysafe-verify>", () => {
 
   it("makes no start for a tab on its way to the wallet, and one again when the tab is shown", async () => {
     defineElement();
-    Object.defineProperty(navigator, "userAgent", { value: "Mozilla/5.0 (Linux; Android 16) Chrome/154 Mobile", configurable: true });
+    Object.defineProperty(navigator, "userAgent", {
+      value: "Mozilla/5.0 (Linux; Android 16) Chrome/154 Mobile",
+      configurable: true,
+    });
     const starts: string[] = [];
     const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
       const body = JSON.parse(String(init.body)) as { action: string; flow?: string };
       if (body.action === "start") starts.push(body.flow ?? "");
-      return new Response(JSON.stringify({ id: `v${starts.length}`, flow: "same_device", status: "pending", authorizationRequestUri: "openid4vp://x" }), { status: 201 });
+      return new Response(
+        JSON.stringify({
+          id: `v${starts.length}`,
+          flow: "same_device",
+          status: "pending",
+          authorizationRequestUri: "openid4vp://x",
+        }),
+        { status: 201 },
+      );
     });
     vi.stubGlobal("fetch", fetchMock);
     const el = document.createElement("verysafe-verify") as VerySafeVerifyElement;
@@ -95,7 +123,10 @@ describe("<verysafe-verify>", () => {
 
   it("starts the prompt's verification ahead of the tap, and the tap only opens the prompt", async () => {
     defineElement();
-    Object.defineProperty(navigator, "userAgent", { value: "Mozilla/5.0 (Linux; Android 16) Chrome/154 Mobile", configurable: true });
+    Object.defineProperty(navigator, "userAgent", {
+      value: "Mozilla/5.0 (Linux; Android 16) Chrome/154 Mobile",
+      configurable: true,
+    });
     (globalThis as Record<string, unknown>).DigitalCredential = { userAgentAllowsProtocol: () => true };
     const get = vi.fn(async () => ({ protocol: "openid4vp-v1-signed", data: { response: "jwe" } }));
     Object.defineProperty(navigator, "credentials", { value: { get }, configurable: true });
@@ -104,7 +135,17 @@ describe("<verysafe-verify>", () => {
       if (url.endsWith("/dc-api-response")) return new Response("{}", { status: 200 });
       const body = JSON.parse(String(init.body)) as { action: string };
       actions.push(body.action);
-      if (body.action === "start") return new Response(JSON.stringify({ id: "v7", flow: "dc_api", status: "pending", dcApiRequests: [{ protocol: "openid4vp-v1-signed", data: {} }], dcApiResponseUrl: "https://verifier.example/v1/verifications/v7/dc-api-response" }), { status: 201 });
+      if (body.action === "start")
+        return new Response(
+          JSON.stringify({
+            id: "v7",
+            flow: "dc_api",
+            status: "pending",
+            dcApiRequests: [{ protocol: "openid4vp-v1-signed", data: {} }],
+            dcApiResponseUrl: "https://verifier.example/v1/verifications/v7/dc-api-response",
+          }),
+          { status: 201 },
+        );
       return new Response(JSON.stringify({ id: "v7", status: "verified" }), { status: 200 });
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -117,6 +158,47 @@ describe("<verysafe-verify>", () => {
     expect(result).toEqual({ outcome: "verified", id: "v7", flow: "dc_api" });
     expect(get).toHaveBeenCalledTimes(1);
     expect(actions.filter((a) => a === "start")).toHaveLength(2); // the one used, and the next one made ready after the run
+    delete (globalThis as Record<string, unknown>).DigitalCredential;
+    Object.defineProperty(navigator, "credentials", { value: undefined, configurable: true });
+  });
+
+  it("offers the prompt protocols its attribute lists, in that order, with the start made ahead, and the page's origin", async () => {
+    defineElement();
+    Object.defineProperty(navigator, "userAgent", {
+      value: "Mozilla/5.0 (Linux; Android 16) Chrome/154 Mobile",
+      configurable: true,
+    });
+    (globalThis as Record<string, unknown>).DigitalCredential = { userAgentAllowsProtocol: () => true };
+    Object.defineProperty(navigator, "credentials", { value: { get: vi.fn(async () => null) }, configurable: true });
+    const starts: Record<string, unknown>[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: RequestInit) => {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+        if (body.action === "start") starts.push(body);
+        return new Response(
+          JSON.stringify({
+            id: "v8",
+            flow: "dc_api",
+            status: "pending",
+            dcApiRequests: [],
+            dcApiResponseUrl: "https://verifier.example/r",
+          }),
+          { status: 201 },
+        );
+      }),
+    );
+    const el = document.createElement("verysafe-verify") as VerySafeVerifyElement;
+    el.setAttribute("endpoint", "/api/verify");
+    el.setAttribute("protocols", "org-iso-mdoc, openid4vp-v1-signed");
+    document.body.appendChild(el);
+    await vi.waitFor(() => expect(starts).toHaveLength(1));
+    expect(starts[0]).toEqual({
+      action: "start",
+      flow: "dc_api",
+      dcApiProtocols: ["org-iso-mdoc", "openid4vp-v1-signed"],
+      dcApiOrigin: location.origin,
+    });
     delete (globalThis as Record<string, unknown>).DigitalCredential;
     Object.defineProperty(navigator, "credentials", { value: undefined, configurable: true });
   });

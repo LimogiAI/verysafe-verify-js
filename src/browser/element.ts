@@ -1,7 +1,7 @@
 import type { Flow, PageStart } from "../shared/types.js";
-import { detect } from "./detect.js";
+import { DEFAULT_PROTOCOLS, detect } from "./detect.js";
 import { httpTransport } from "./transport.js";
-import { complete, type CompleteResult, verify, type VerifyResult } from "./verify.js";
+import { complete, type CompleteResult, promptStartOptions, verify, type VerifyResult } from "./verify.js";
 
 const STYLES = `
 :host { display: inline-block; font: inherit; }
@@ -22,7 +22,8 @@ export const DEFAULT_PREPARE_TTL_MS = 4 * 60 * 1000;
  * verification ahead of the tap and refreshes it every few minutes, since
  * Chrome opens a prompt or a wallet only within seconds of the tap;
  * `prepare="off"` turns that off. On a return page it runs `complete` on its
- * own. It dispatches
+ * own. `protocols="org-iso-mdoc,openid4vp-v1-signed"` changes which prompt
+ * protocols are offered, and in which order. It dispatches
  * `verysafe-verify:flow`, `verysafe-verify:fallback`, `verysafe-verify:status` and `verysafe-verify:result`
  * events (the last one also in the tab that opened the wallet, when the
  * return tab has finished), with the library's values in `detail`. Styles come through a
@@ -112,12 +113,24 @@ export class VerySafeVerifyElement extends HTMLElement {
     return value === "dc_api" || value === "same_device" || value === "cross_device" ? value : undefined;
   }
 
+  /** The `protocols` attribute, comma-separated, in order; the library's default without it. */
+  #protocols(): readonly string[] {
+    const value = this.getAttribute("protocols");
+    if (value === null) return DEFAULT_PROTOCOLS;
+    const listed = value
+      .split(",")
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+    return listed.length > 0 ? listed : DEFAULT_PROTOCOLS;
+  }
+
   /** Starts ahead of the tap, for the prompt and for a link, and again before the start goes stale. */
   #prepare(): void {
     if (this.#prepareTimer !== undefined) clearTimeout(this.#prepareTimer);
     this.#prepareTimer = undefined;
     if (this.getAttribute("prepare") === "off" || !this.isConnected) return;
-    const flow = this.#preferredFlow() ?? detect().flow;
+    const detection = detect({ protocols: this.#protocols() });
+    const flow = this.#preferredFlow() ?? detection.flow;
     if (flow === "cross_device") return;
     let endpoint: string;
     try {
@@ -126,7 +139,7 @@ export class VerySafeVerifyElement extends HTMLElement {
       return;
     }
     this.#prepared = httpTransport(endpoint)
-      .start(flow)
+      .start(flow, flow === "dc_api" ? promptStartOptions(detection) : undefined)
       .then(
         (start) => start,
         () => undefined,
@@ -163,6 +176,7 @@ export class VerySafeVerifyElement extends HTMLElement {
         transport: httpTransport(this.endpoint),
         qrElement: this.#qr,
         signal: abort.signal,
+        protocols: this.#protocols(),
         ...(prepared === undefined ? {} : { prepared }),
         ...(preferFlow === undefined ? {} : { preferFlow }),
         ...(Number.isFinite(pollAttribute) && pollAttribute >= 1000 ? { pollIntervalMs: pollAttribute } : {}),

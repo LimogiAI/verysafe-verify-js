@@ -6,8 +6,10 @@
 // RETURN_BASE_URL (default http://127.0.0.1:8790) is where the wallet sends
 // the person back; an https tunnel to this port, registered as a return
 // origin and a browser origin for the key, lets a phone reach it. CLAIMS
-// names the claims to ask for, LINK_SCHEME what a link starts with
-// (openid4vp:// by default; haip-vp://, eu-eaap://, or a wallet's app link).
+// names the claims to ask for, CREDENTIAL_TYPE the type (eu_pid by default;
+// eu_pid_mdoc or iso_mdl for Safari's ISO mdoc protocol), LINK_SCHEME what a
+// link starts with (openid4vp:// by default; haip-vp://, eu-eaap://, or a
+// wallet's app link).
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createClient, handleNodeRequest } from "../dist/server/index.js";
@@ -28,27 +30,48 @@ const server = createServer(async (request, response) => {
   if (url.pathname === "/api/verify") {
     const { verification } = await handleNodeRequest(client, request, response, {
       returnUrl: `${returnBase}/`,
-      start: { claims: process.env.CLAIMS?.split(","), linkScheme: process.env.LINK_SCHEME },
+      start: {
+        credentialType: process.env.CREDENTIAL_TYPE,
+        claims: process.env.CLAIMS?.split(","),
+        linkScheme: process.env.LINK_SCHEME,
+      },
       onError: (error) => console.error("verifier:", error instanceof Error ? error.message : error),
     });
     if (verification?.status === "verified") {
       // The claims are here, on the server, and nowhere else. An example
       // prints which claims came, never their values.
-      const claims = verification.result && typeof verification.result === "object" ? Object.keys(verification.result.claims ?? {}) : [];
+      const claims =
+        verification.result && typeof verification.result === "object"
+          ? Object.keys(verification.result.claims ?? {})
+          : [];
       console.log(`verified ${verification.id} (${verification.flow}): ${claims.join(", ")}`);
     }
     return;
   }
-  const files = { "/": "page.html", "/page.js": "page.js", "/page.css": "page.css", "/verysafe-verify.iife.js": "../dist/verysafe-verify.iife.js", "/verysafe-verify.iife.js.map": "../dist/verysafe-verify.iife.js.map" };
+  const files = {
+    "/": "page.html",
+    "/page.js": "page.js",
+    "/page.css": "page.css",
+    "/verysafe-verify.iife.js": "../dist/verysafe-verify.iife.js",
+    "/verysafe-verify.iife.js.map": "../dist/verysafe-verify.iife.js.map",
+  };
   const file = files[url.pathname];
   if (!file) {
     response.writeHead(404).end();
     return;
   }
   const body = await readFile(new URL(file, import.meta.url));
-  const type = file.endsWith(".html") ? "text/html; charset=utf-8" : file.endsWith(".css") ? "text/css" : file.endsWith(".map") ? "application/json" : "text/javascript; charset=utf-8";
+  const type = file.endsWith(".html")
+    ? "text/html; charset=utf-8"
+    : file.endsWith(".css")
+      ? "text/css"
+      : file.endsWith(".map")
+        ? "application/json"
+        : "text/javascript; charset=utf-8";
   response.writeHead(200, { "content-type": type, "content-security-policy": csp, "cache-control": "no-store" });
   response.end(body);
 });
 
-server.listen(port, "127.0.0.1", () => console.log(`example page: http://127.0.0.1:${port}/  (verifier ${baseUrl}, return ${returnBase}/)`));
+server.listen(port, "127.0.0.1", () =>
+  console.log(`example page: http://127.0.0.1:${port}/  (verifier ${baseUrl}, return ${returnBase}/)`),
+);

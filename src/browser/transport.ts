@@ -1,12 +1,18 @@
 import type { Flow, PageReply, PageStart, PageStatus } from "../shared/types.js";
 
+/** What a `dc_api` start tells the server about this browser: the prompt protocols it allows, and the page's origin. */
+export interface StartOptions {
+  dcApiProtocols?: readonly string[];
+  dcApiOrigin?: string;
+}
+
 /**
  * The three calls the page makes to the customer's server. The server half of
  * this package answers them (`handlePageRequest`); a server on another
  * platform implements the same three.
  */
 export interface Transport {
-  start(flow: Flow): Promise<PageStart>;
+  start(flow: Flow, options?: StartOptions): Promise<PageStart>;
   status(id: string): Promise<PageStatus>;
   exchange(id: string, responseCode: string): Promise<PageStatus>;
 }
@@ -37,7 +43,8 @@ export interface HttpTransportOptions {
 
 /**
  * A transport that posts each call as JSON to one endpoint on the customer's
- * server: `{"action": "start", "flow": …}`, `{"action": "status", "id": …}`,
+ * server: `{"action": "start", "flow": …}` (with `dcApiProtocols` and
+ * `dcApiOrigin` for the prompt), `{"action": "status", "id": …}`,
  * `{"action": "exchange", "id": …, "responseCode": …}`. The server half's
  * `handlePageRequest` reads exactly these.
  */
@@ -51,7 +58,7 @@ export function httpTransport(endpoint: string, options: HttpTransportOptions = 
       body: JSON.stringify(body),
     });
     const text = await response.text();
-    let parsed: unknown ;
+    let parsed: unknown;
     if (text.length > 0) {
       try {
         parsed = JSON.parse(text);
@@ -61,7 +68,9 @@ export function httpTransport(endpoint: string, options: HttpTransportOptions = 
     }
     if (!response.ok) {
       const error =
-        parsed !== null && typeof parsed === "object" && typeof (parsed as PageReply & { error?: unknown }).error === "string"
+        parsed !== null &&
+        typeof parsed === "object" &&
+        typeof (parsed as PageReply & { error?: unknown }).error === "string"
           ? (parsed as { error: string }).error
           : `The server answered ${response.status}.`;
       const retry = Number(response.headers.get("retry-after"));
@@ -73,7 +82,13 @@ export function httpTransport(endpoint: string, options: HttpTransportOptions = 
     return parsed as T;
   }
   return {
-    start: (flow) => post<PageStart>({ action: "start", flow }),
+    start: (flow, startOptions) =>
+      post<PageStart>({
+        action: "start",
+        flow,
+        ...(startOptions?.dcApiProtocols === undefined ? {} : { dcApiProtocols: [...startOptions.dcApiProtocols] }),
+        ...(startOptions?.dcApiOrigin === undefined ? {} : { dcApiOrigin: startOptions.dcApiOrigin }),
+      }),
     status: (id) => post<PageStatus>({ action: "status", id }),
     exchange: (id, responseCode) => post<PageStatus>({ action: "exchange", id, responseCode }),
   };

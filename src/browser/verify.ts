@@ -1,6 +1,6 @@
 import { type Flow, isFinal, type PageStart, type VerificationStatus } from "../shared/types.js";
-import { DEFAULT_PROTOCOLS, detect } from "./detect.js";
-import { type Transport, TransportError } from "./transport.js";
+import { DEFAULT_PROTOCOLS, detect, type Detection } from "./detect.js";
+import { type StartOptions, type Transport, TransportError } from "./transport.js";
 
 export interface VerifyOptions {
   /** The three calls to the customer's server. `httpTransport(endpoint)` for most pages. */
@@ -9,7 +9,11 @@ export interface VerifyOptions {
   qrElement?: Element | null;
   /** Draws the QR code yourself instead of `qrElement`. Called with the link to encode. */
   renderQr?: (authorizationRequestUri: string, start: PageStart) => void;
-  /** The browser-prompt protocols to ask the browser about. */
+  /**
+   * The browser-prompt protocols to ask the browser about, in the order to
+   * offer them; `DEFAULT_PROTOCOLS` by default. Those the browser allows go
+   * to the customer's server with the start, which offers what it can.
+   */
   protocols?: readonly string[];
   /** Skips detection and tries this way. For a page that knows better, or to retry after a cancel. */
   preferFlow?: Flow;
@@ -136,7 +140,7 @@ export async function verify(options: VerifyOptions): Promise<VerifyResult> {
 
   if (flow === "dc_api") {
     options.onFlow?.(flow);
-    const prompted = await browserPrompt(options);
+    const prompted = await browserPrompt(options, detection);
     if (prompted.outcome !== "fallback") return prompted;
     flow = fallback;
   }
@@ -148,15 +152,46 @@ export async function verify(options: VerifyOptions): Promise<VerifyResult> {
 
 type PromptOutcome = VerifyResult | { outcome: "fallback" };
 
-async function startOf(options: VerifyOptions, flow: Flow): Promise<PageStart> {
-  const prepared = options.prepared === undefined ? undefined : await options.prepared;
-  return prepared !== undefined && prepared.flow === flow ? prepared : options.transport.start(flow);
+/**
+ * What a `dc_api` start tells the customer's server: the prompt protocols
+ * this browser allows, in the order to offer them, and the page's origin,
+ * which the ISO mdoc protocol's request is made for. A page that starts
+ * ahead of the tap passes this to `transport.start`; the element does.
+ */
+export function promptStartOptions(detection: Pick<Detection, "protocols">): StartOptions {
+  // A browser that allows none asks for nothing: the server offers what it
+  // offers, and the start's requests are then checked against the browser.
+  const options: StartOptions = detection.protocols.length === 0 ? {} : { dcApiProtocols: [...detection.protocols] };
+  const origin = pageOrigin();
+  if (origin !== undefined) options.dcApiOrigin = origin;
+  return options;
 }
 
-async function browserPrompt(options: VerifyOptions): Promise<PromptOutcome> {
+function pageOrigin(): string | undefined {
+  try {
+    const origin = location.origin;
+    return typeof origin === "string" && origin !== "null" && origin.length > 0 ? origin : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function startOf(options: VerifyOptions, flow: Flow, startOptions?: StartOptions): Promise<PageStart> {
+  const prepared = options.prepared === undefined ? undefined : await options.prepared;
+  return prepared !== undefined && prepared.flow === flow ? prepared : options.transport.start(flow, startOptions);
+}
+
+/** The protocol of one entry of `dcApiRequests`, or undefined. */
+function protocolOf(request: unknown): string | undefined {
+  const protocol =
+    request !== null && typeof request === "object" ? (request as { protocol?: unknown }).protocol : undefined;
+  return typeof protocol === "string" ? protocol : undefined;
+}
+
+async function browserPrompt(options: VerifyOptions, detection: Detection): Promise<PromptOutcome> {
   let start: PageStart;
   try {
-    start = await startOf(options, "dc_api");
+    start = await startOf(options, "dc_api", promptStartOptions(detection));
   } catch (error) {
     // The customer's server, or the verifier behind it, refused a prompt start:
     // the page's origin is not registered, say. The next way may still work.
@@ -168,6 +203,13 @@ async function browserPrompt(options: VerifyOptions): Promise<PromptOutcome> {
   }
   if (!Array.isArray(start.dcApiRequests) || typeof start.dcApiResponseUrl !== "string") {
     options.onFallback?.("The start carried no browser-prompt request.");
+    return { outcome: "fallback" };
+  }
+  // The server offers what it can; a start whose every request is in a
+  // protocol this browser lacks (Safari, for a credential that is not an
+  // mdoc) would only fail in the prompt. The next way may still work.
+  if (!start.dcApiRequests.some((request) => detection.protocols.includes(protocolOf(request) ?? ""))) {
+    options.onFallback?.("The start offered no browser-prompt protocol this browser allows.");
     return { outcome: "fallback" };
   }
   const credentials = options.credentials ?? navigator.credentials;

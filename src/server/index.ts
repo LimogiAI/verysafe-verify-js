@@ -2,6 +2,7 @@
 export {
   type ClientOptions,
   createClient,
+  type CredentialTypeSummary,
   type StartedVerification,
   type StartInput,
   type Verification,
@@ -9,10 +10,13 @@ export {
   VerySafeClient,
 } from "./client.js";
 export { handleNodeRequest, MAX_PAGE_BODY_BYTES, readJsonBody } from "./node.js";
-export { handlePageRequest, type PageHandlerOptions, type PageHandlerResult } from "./page.js";
+export { handlePageRequest, type PageContext, type PageHandlerOptions, type PageHandlerResult } from "./page.js";
 export {
+  DC_API_PROTOCOLS,
+  type DcApiProtocol,
   FINAL_STATUSES,
   type Flow,
+  isDcApiProtocol,
   FLOWS,
   isFinal,
   isFlow,
