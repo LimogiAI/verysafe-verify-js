@@ -39,4 +39,6 @@ Versions follow [Semantic Versioning](https://semver.org/) on this package's
 own line: a major means a page or a server has to change its code. Bump
 `package.json` and `src/version.ts` (a test keeps them equal), move
 "Unreleased" to the version in `CHANGELOG.md`, tag `v<version>` on `main`.
-The `publish` workflow publishes it to npm with provenance.
+The `publish` workflow publishes it to npm with provenance, which only CI
+can attach; a publish by hand (the first one, 0.1.0, was) needs
+`--provenance=false`.
